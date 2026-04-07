@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paint by Number</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>🎨 Paint by Number</h1>
+      <p class="subtitle">Upload an image, pick your palette size, and generate a printable paint-by-number sheet.</p>
+    </header>
+
+    <section class="card controls-card">
+      <div class="upload-area" id="dropZone">
+        <input type="file" id="imageInput" accept="image/*" hidden>
+        <div class="upload-placeholder" id="uploadPlaceholder">
+          <span class="upload-icon">📁</span>
+          <span>Drop an image here or <label class="upload-link" for="imageInput">browse</label></span>
+        </div>
+        <div class="upload-preview" id="uploadPreview" hidden>
+          <img id="previewImg" alt="Preview">
+          <button class="remove-btn" id="removeBtn" aria-label="Remove image">✕</button>
+        </div>
+      </div>
+      <div class="controls-row">
+        <div class="control-group">
+          <label for="colorCount">Colors</label>
+          <div class="range-wrap">
+            <input type="range" id="colorCount" min="4" max="32" value="8">
+            <span class="range-val" id="colorCountVal">8</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="detailLevel">Detail</label>
+          <div class="range-wrap">
+            <input type="range" id="detailLevel" min="300" max="3000" step="100" value="600">
+            <span class="range-val" id="detailVal">600px</span>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="generateBtn" disabled>Generate</button>
+      </div>
+    </section>
+
+    <section class="card" id="cropSection" hidden>
+      <h2 class="card-title">Crop &amp; Resize</h2>
+      <p class="card-desc">Drag on the image to select a region. Pick a page size to lock the aspect ratio.</p>
+      <div class="crop-toolbar">
+        <select id="pageSize" aria-label="Page size">
+          <option value="free">Freeform</option>
+          <option value="letter">Letter (8.5×11)</option>
+          <option value="letter-l">Letter Landscape</option>
+          <option value="a4">A4</option>
+          <option value="a4-l">A4 Landscape</option>
+          <option value="a3">A3</option>
+          <option value="a3-l">A3 Landscape</option>
+          <option value="4x6">4×6 Photo</option>
+          <option value="5x7">5×7 Photo</option>
+          <option value="square">Square</option>
+        </select>
+        <button class="btn btn-primary" id="cropConfirmBtn">Confirm Crop</button>
+        <button class="btn btn-ghost" id="cropResetBtn">Reset</button>
+        <button class="btn btn-ghost" id="cropSkipBtn">Skip</button>
+      </div>
+      <div class="crop-canvas-wrap">
+        <canvas id="cropCanvas"></canvas>
+      </div>
+    </section>
+
+    <section class="card" id="output" hidden>
+      <h2 class="card-title">Result</h2>
+      <div class="output-toolbar">
+        <button class="btn btn-primary" id="downloadBtn">⬇ Download PNG</button>
+        <button class="btn btn-accent" id="previewAnimBtn">▶ Preview Paint</button>
+        <button class="btn btn-ghost" id="zoomInBtn">＋ Zoom In</button>
+        <button class="btn btn-ghost" id="zoomOutBtn">－ Zoom Out</button>
+        <button class="btn btn-ghost" id="zoomResetBtn">Reset View</button>
+        <label class="toggle-label">
+          <input type="checkbox" id="outlineOnly">
+          <span>Outline only (printable)</span>
+        </label>
+      </div>
+      <div class="result-viewport" id="resultViewport">
+        <canvas id="resultCanvas"></canvas>
+      </div>
+      <div id="legend" class="legend"></div>
+    </section>
+  </div>
+
+  <canvas id="srcCanvas" hidden></canvas>
+  <script src="app.js"></script>
+</body>
+</html>
