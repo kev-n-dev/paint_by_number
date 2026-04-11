@@ -13,10 +13,11 @@
   <div class="app">
     <header class="header">
       <h1>🎨 Paint by Number</h1>
-      <p class="subtitle">Upload an image, pick your palette size, and generate a printable paint-by-number sheet.</p>
+      <p class="subtitle">Upload an image, choose a style, and generate a printable paint-by-number sheet.</p>
     </header>
 
-    <section class="card controls-card">
+    <!-- Step 1: Upload -->
+    <section class="card">
       <div class="upload-area" id="dropZone">
         <input type="file" id="imageInput" accept="image/*" hidden>
         <div class="upload-placeholder" id="uploadPlaceholder">
@@ -28,6 +29,27 @@
           <button class="remove-btn" id="removeBtn" aria-label="Remove image">✕</button>
         </div>
       </div>
+    </section>
+
+    <!-- Step 2: Style -->
+    <section class="card" id="styleSection" hidden>
+      <h2 class="card-title">Choose a Style</h2>
+      <div class="style-grid" id="styleGrid">
+        <button class="style-card active" data-style="realistic"><span class="style-icon">📷</span><span>Realistic</span></button>
+        <button class="style-card" data-style="watercolor"><span class="style-icon">💧</span><span>Watercolor</span></button>
+        <button class="style-card" data-style="cartoon"><span class="style-icon">✏️</span><span>Cartoon</span></button>
+        <button class="style-card" data-style="posterize"><span class="style-icon">🎭</span><span>Pop Art</span></button>
+        <button class="style-card" data-style="softpastel"><span class="style-icon">🌸</span><span>Soft Pastel</span></button>
+        <button class="style-card" data-style="oilpaint"><span class="style-icon">🖌️</span><span>Oil Paint</span></button>
+      </div>
+      <div class="style-preview-wrap">
+        <canvas id="stylePreviewCanvas"></canvas>
+      </div>
+    </section>
+
+    <!-- Step 3: Settings -->
+    <section class="card" id="controlsSection" hidden>
+      <h2 class="card-title">Settings</h2>
       <div class="controls-row">
         <div class="control-group">
           <label for="colorCount">Colors</label>
@@ -43,35 +65,88 @@
             <span class="range-val" id="detailVal">600px</span>
           </div>
         </div>
-        <button class="btn btn-primary" id="generateBtn" disabled>Generate</button>
+        <div class="control-group">
+          <label for="sharpness">Sharpness</label>
+          <div class="range-wrap">
+            <input type="range" id="sharpness" min="0" max="200" step="10" value="80">
+            <span class="range-val" id="sharpnessVal">80%</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="structure">Structure</label>
+          <div class="range-wrap">
+            <input type="range" id="structure" min="0" max="200" step="10" value="15">
+            <span class="range-val" id="structureVal">15%</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="brightness">Brightness</label>
+          <div class="range-wrap">
+            <input type="range" id="brightness" min="-100" max="100" step="5" value="0">
+            <span class="range-val" id="brightnessVal">0</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="contrast">Contrast</label>
+          <div class="range-wrap">
+            <input type="range" id="contrast" min="-100" max="100" step="5" value="0">
+            <span class="range-val" id="contrastVal">0</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="saturation">Saturation</label>
+          <div class="range-wrap">
+            <input type="range" id="saturation" min="-100" max="100" step="5" value="0">
+            <span class="range-val" id="saturationVal">0</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="warmth">Warmth</label>
+          <div class="range-wrap">
+            <input type="range" id="warmth" min="-100" max="100" step="5" value="0">
+            <span class="range-val" id="warmthVal">0</span>
+          </div>
+        </div>
+        <label class="toggle-label">
+          <input type="checkbox" id="cartoonOutlines">
+          <span>Cartoon outlines</span>
+        </label>
       </div>
+      <div class="palette-section">
+        <label class="toggle-label">
+          <input type="checkbox" id="useCustomPalette">
+          <span>Use my paints</span>
+        </label>
+        <div class="custom-palette" id="customPaletteUI" hidden>
+          <div class="palette-picker-row">
+            <select id="paletteSelect" aria-label="Select palette"></select>
+            <button class="btn btn-ghost btn-sm" id="newPaletteBtn">＋ New</button>
+            <button class="btn btn-ghost btn-sm" id="loadPresetBtn">📦 Presets</button>
+            <button class="btn btn-ghost btn-sm" id="renamePaletteBtn">✎ Rename</button>
+            <button class="btn btn-ghost btn-sm btn-danger-text" id="deletePaletteBtn">🗑 Delete</button>
+          </div>
+          <div class="palette-add-row">
+            <input type="color" id="paintColorPicker" value="#e63946">
+            <input type="text" id="paintNameInput" class="paint-name-input" placeholder="Color name (optional)">
+            <button class="btn btn-primary btn-sm" id="addPaintBtn">Add</button>
+          </div>
+          <div class="paint-chips" id="paintChips"></div>
+          <label class="toggle-label">
+            <input type="checkbox" id="allowMixing">
+            <span>Allow color mixing (more detail)</span>
+          </label>
+          <p class="palette-hint" id="paletteHint">Add at least 2 colors from your paint set.</p>
+        </div>
+      </div>
+      <button class="btn btn-primary btn-generate" id="generateBtn" disabled>
+        <span id="generateText">🎨 Generate</span>
+        <span id="generateSpinner" class="spinner" hidden>
+          <span class="spinner-brush">🖌️</span>
+        </span>
+      </button>
     </section>
 
-    <section class="card" id="cropSection" hidden>
-      <h2 class="card-title">Crop &amp; Resize</h2>
-      <p class="card-desc">Drag on the image to select a region. Pick a page size to lock the aspect ratio.</p>
-      <div class="crop-toolbar">
-        <select id="pageSize" aria-label="Page size">
-          <option value="free">Freeform</option>
-          <option value="letter">Letter (8.5×11)</option>
-          <option value="letter-l">Letter Landscape</option>
-          <option value="a4">A4</option>
-          <option value="a4-l">A4 Landscape</option>
-          <option value="a3">A3</option>
-          <option value="a3-l">A3 Landscape</option>
-          <option value="4x6">4×6 Photo</option>
-          <option value="5x7">5×7 Photo</option>
-          <option value="square">Square</option>
-        </select>
-        <button class="btn btn-primary" id="cropConfirmBtn">Confirm Crop</button>
-        <button class="btn btn-ghost" id="cropResetBtn">Reset</button>
-        <button class="btn btn-ghost" id="cropSkipBtn">Skip</button>
-      </div>
-      <div class="crop-canvas-wrap">
-        <canvas id="cropCanvas"></canvas>
-      </div>
-    </section>
-
+    <!-- Step 5: Result -->
     <section class="card" id="output" hidden>
       <h2 class="card-title">Result</h2>
       <div class="output-toolbar">

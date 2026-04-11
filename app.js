@@ -8,12 +8,6 @@
   const srcCanvas = $('srcCanvas');
   const resultCanvas = $('resultCanvas');
   const legend = $('legend');
-  const cropSection = $('cropSection');
-  const cropCanvas = $('cropCanvas');
-  const pageSizeEl = $('pageSize');
-  const cropConfirmBtn = $('cropConfirmBtn');
-  const cropResetBtn = $('cropResetBtn');
-  const cropSkipBtn = $('cropSkipBtn');
   const downloadBtn = $('downloadBtn');
   const zoomInBtn = $('zoomInBtn');
   const zoomOutBtn = $('zoomOutBtn');
@@ -27,56 +21,294 @@
   const removeBtn = $('removeBtn');
   const detailLevel = $('detailLevel');
   const detailVal = $('detailVal');
+  const sharpness = $('sharpness');
+  const sharpnessVal = $('sharpnessVal');
+  const structure = $('structure');
+  const structureVal = $('structureVal');
+  const brightnessEl = $('brightness');
+  const brightnessVal = $('brightnessVal');
+  const contrastEl = $('contrast');
+  const contrastVal = $('contrastVal');
+  const saturationEl = $('saturation');
+  const saturationVal = $('saturationVal');
+  const warmthEl = $('warmth');
+  const warmthVal = $('warmthVal');
+  const cartoonOutlines = $('cartoonOutlines');
+  const useCustomPalette = $('useCustomPalette');
+  const styleSection = $('styleSection');
+  const controlsSection = $('controlsSection');
+  const styleGrid = $('styleGrid');
+  const stylePreviewCanvas = $('stylePreviewCanvas');
+  const customPaletteUI = $('customPaletteUI');
+  const paintColorPicker = $('paintColorPicker');
+  const paintNameInput = $('paintNameInput');
+  const addPaintBtn = $('addPaintBtn');
+  const paintChips = $('paintChips');
+  const paletteHint = $('paletteHint');
+  const paletteSelect = $('paletteSelect');
+  const newPaletteBtn = $('newPaletteBtn');
+  const renamePaletteBtn = $('renamePaletteBtn');
+  const deletePaletteBtn = $('deletePaletteBtn');
+  const loadPresetBtn = $('loadPresetBtn');
+  const allowMixing = $('allowMixing');
 
   let loadedImage = null;
-  let cropRect = null;
   let dragging = false;
   let dragStart = null;
-  let displayScale = 1;
 
-  // Stored render data for re-drawing (outline toggle)
   let renderData = null;
   let animId = null;
-  let lastCrop = null; // remember crop for live slider updates
-  let regenTimer = null;
+  let lastCrop = null;
+  let currentStyle = 'realistic';
+  let styledImage = null; // canvas with style applied
   const outlineOnly = $('outlineOnly');
 
-  const PAGE_RATIOS = {
-    free: null, letter: 8.5/11, 'letter-l': 11/8.5,
-    a4: 210/297, 'a4-l': 297/210, a3: 297/420, 'a3-l': 420/297,
-    '4x6': 4/6, '5x7': 5/7, square: 1,
-  };
+  // Multi-palette storage: { palettes: [{name, colors: [{r,g,b,hex,name}]}], active: 0 }
+
+  // Predefined acrylic paint palettes (must be before loadPaletteStore call)
+  function makeColor(hex, name) {
+    const v = parseInt(hex.replace('#',''), 16);
+    return { r: (v>>16)&255, g: (v>>8)&255, b: v&255, hex, name };
+  }
+
+  const PRESET_PALETTES = [
+    { name: 'Basic Acrylics (12)', colors: [
+      makeColor('#FFFFFF','Titanium White'), makeColor('#1A1A1A','Mars Black'),
+      makeColor('#C41E3A','Cadmium Red'), makeColor('#FF6347','Vermilion'),
+      makeColor('#FFD700','Cadmium Yellow'), makeColor('#FFA500','Yellow Ochre'),
+      makeColor('#1E90FF','Cerulean Blue'), makeColor('#00008B','Ultramarine Blue'),
+      makeColor('#228B22','Sap Green'), makeColor('#2E8B57','Viridian'),
+      makeColor('#8B4513','Burnt Sienna'), makeColor('#A0522D','Raw Umber'),
+    ]},
+    { name: 'Earth Tones (10)', colors: [
+      makeColor('#FFFFFF','Titanium White'), makeColor('#2F2F2F','Payne\'s Grey'),
+      makeColor('#FFA500','Yellow Ochre'), makeColor('#DAA520','Raw Sienna'),
+      makeColor('#8B4513','Burnt Sienna'), makeColor('#A0522D','Raw Umber'),
+      makeColor('#3D2B1F','Burnt Umber'), makeColor('#CD853F','Gold Ochre'),
+      makeColor('#D2B48C','Buff Titanium'), makeColor('#556B2F','Olive Green'),
+    ]},
+    { name: 'Portrait Set (12)', colors: [
+      makeColor('#FFFFFF','Titanium White'), makeColor('#1A1A1A','Mars Black'),
+      makeColor('#FFDAB9','Unbleached Titanium'), makeColor('#FFE4C4','Naples Yellow'),
+      makeColor('#FFA500','Yellow Ochre'), makeColor('#8B4513','Burnt Sienna'),
+      makeColor('#A0522D','Raw Umber'), makeColor('#C41E3A','Cadmium Red'),
+      makeColor('#DC143C','Alizarin Crimson'), makeColor('#00008B','Ultramarine Blue'),
+      makeColor('#2E8B57','Viridian'), makeColor('#2F4F4F','Payne\'s Grey'),
+    ]},
+    { name: 'Landscape Set (14)', colors: [
+      makeColor('#FFFFFF','Titanium White'), makeColor('#1A1A1A','Mars Black'),
+      makeColor('#87CEEB','Cerulean Blue'), makeColor('#00008B','Ultramarine Blue'),
+      makeColor('#191970','Prussian Blue'), makeColor('#228B22','Sap Green'),
+      makeColor('#2E8B57','Viridian'), makeColor('#556B2F','Olive Green'),
+      makeColor('#FFD700','Cadmium Yellow'), makeColor('#FFFF00','Lemon Yellow'),
+      makeColor('#FFA500','Yellow Ochre'), makeColor('#8B4513','Burnt Sienna'),
+      makeColor('#A0522D','Raw Umber'), makeColor('#C41E3A','Cadmium Red'),
+    ]},
+    { name: 'Pastel Set (10)', colors: [
+      makeColor('#FFFFFF','Titanium White'), makeColor('#FFB6C1','Pink'),
+      makeColor('#FFD1DC','Blush'), makeColor('#E6E6FA','Lavender'),
+      makeColor('#ADD8E6','Light Blue'), makeColor('#B0E0E6','Powder Blue'),
+      makeColor('#98FB98','Mint Green'), makeColor('#FFFACD','Lemon Chiffon'),
+      makeColor('#FFDAB9','Peach'), makeColor('#D3D3D3','Light Grey'),
+    ]},
+  ];
+
+  let paletteStore = loadPaletteStore();
+  let customPaints = getActivePaletteColors();
+
+  // --- Palette Storage ---
+  function hexToRgb(hex) {
+    const v = parseInt(hex.replace('#', ''), 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  }
+
+  function loadPaletteStore() {
+    try {
+      const raw = JSON.parse(localStorage.getItem('pbn_palette_store'));
+      if (raw && raw.palettes && raw.palettes.length > 0) return raw;
+    } catch(e) {}
+    // Migrate old single-palette format or start fresh with presets
+    let migrated = [];
+    try { migrated = JSON.parse(localStorage.getItem('pbn_paints')) || []; } catch(e) {}
+    const palettes = [{ name: 'My Paints', colors: migrated }];
+    // Add presets
+    for (const p of PRESET_PALETTES) {
+      palettes.push({ name: p.name, colors: p.colors.slice() });
+    }
+    return { palettes, active: 0 };
+  }
+
+  function savePaletteStore() {
+    try { localStorage.setItem('pbn_palette_store', JSON.stringify(paletteStore)); } catch(e) {}
+  }
+
+  function getActivePaletteColors() {
+    const p = paletteStore.palettes[paletteStore.active];
+    return p ? p.colors : [];
+  }
+
+  function syncCustomPaints() {
+    customPaints = getActivePaletteColors();
+  }
+
+  function renderPaletteSelect() {
+    paletteSelect.innerHTML = '';
+    paletteStore.palettes.forEach((p, i) => {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = p.name + ` (${p.colors.length})`;
+      opt.selected = i === paletteStore.active;
+      paletteSelect.appendChild(opt);
+    });
+  }
+
+  function renderChips() {
+    paintChips.innerHTML = '';
+    for (let i = 0; i < customPaints.length; i++) {
+      const p = customPaints[i];
+      const chip = document.createElement('span');
+      chip.className = 'paint-chip';
+      chip.innerHTML = `<span class="paint-chip-swatch" style="background:${p.hex}"></span>` +
+        `<span>${p.name || p.hex}</span>` +
+        `<button class="paint-chip-remove" data-idx="${i}" aria-label="Remove">✕</button>`;
+      paintChips.appendChild(chip);
+    }
+    paletteHint.textContent = customPaints.length < 2
+      ? 'Add at least 2 colors from your paint set.'
+      : `${customPaints.length} paints in this palette.`;
+  }
+
+  function refreshPaletteUI() {
+    syncCustomPaints();
+    renderPaletteSelect();
+    renderChips();
+  }
+
+  // --- Palette Events ---
+  paletteSelect.addEventListener('change', () => {
+    paletteStore.active = parseInt(paletteSelect.value);
+    savePaletteStore();
+    refreshPaletteUI();
+    liveRegenerate();
+  });
+
+  newPaletteBtn.addEventListener('click', () => {
+    const name = window.prompt('Palette name:', 'New Palette');
+    if (name === null || !name.trim()) return;
+    paletteStore.palettes.push({ name: name.trim(), colors: [] });
+    paletteStore.active = paletteStore.palettes.length - 1;
+    savePaletteStore();
+    refreshPaletteUI();
+  });
+
+  renamePaletteBtn.addEventListener('click', () => {
+    const current = paletteStore.palettes[paletteStore.active];
+    const name = window.prompt('Rename palette:', current.name);
+    if (name === null || !name.trim()) return;
+    current.name = name.trim();
+    savePaletteStore();
+    renderPaletteSelect();
+  });
+
+  deletePaletteBtn.addEventListener('click', () => {
+    if (paletteStore.palettes.length <= 1) { window.alert('You need at least one palette.'); return; }
+    const name = paletteStore.palettes[paletteStore.active].name;
+    if (!window.confirm('Delete "' + name + '"?')) return;
+    paletteStore.palettes.splice(paletteStore.active, 1);
+    paletteStore.active = Math.min(paletteStore.active, paletteStore.palettes.length - 1);
+    savePaletteStore();
+    refreshPaletteUI();
+  });
+
+  loadPresetBtn.addEventListener('click', () => {
+    const names = PRESET_PALETTES.map((p, i) => (i + 1) + '. ' + p.name).join('\n');
+    const choice = window.prompt('Pick a preset number:\n' + names);
+    if (choice === null) return;
+    const idx = parseInt(choice) - 1;
+    if (isNaN(idx) || idx < 0 || idx >= PRESET_PALETTES.length) { window.alert('Invalid choice.'); return; }
+    const preset = PRESET_PALETTES[idx];
+    paletteStore.palettes.push({ name: preset.name, colors: preset.colors.map(c => ({...c})) });
+    paletteStore.active = paletteStore.palettes.length - 1;
+    savePaletteStore();
+    refreshPaletteUI();
+  });
+
+  useCustomPalette.addEventListener('change', () => {
+    customPaletteUI.hidden = !useCustomPalette.checked;
+  });
+
+  allowMixing.addEventListener('change', () => { liveRegenerate(); });
+
+  addPaintBtn.addEventListener('click', () => {
+    const hex = paintColorPicker.value;
+    const [r, g, b] = hexToRgb(hex);
+    const name = paintNameInput.value.trim();
+    customPaints.push({ r, g, b, hex, name });
+    savePaletteStore();
+    renderChips();
+    renderPaletteSelect(); // update count in dropdown
+    paintNameInput.value = '';
+    liveRegenerate();
+  });
+
+  paintChips.addEventListener('click', (e) => {
+    const btn = e.target.closest('.paint-chip-remove');
+    if (!btn) return;
+    customPaints.splice(parseInt(btn.dataset.idx), 1);
+    savePaletteStore();
+    renderChips();
+    renderPaletteSelect();
+  });
+
+  refreshPaletteUI();
 
   // --- Upload / drag-drop ---
-  colorCount.addEventListener('input', () => {
-    colorCountVal.textContent = colorCount.value;
-    liveRegenerate();
+  colorCount.addEventListener('input', () => { colorCountVal.textContent = colorCount.value; });
+  detailLevel.addEventListener('input', () => { detailVal.textContent = detailLevel.value + 'px'; });
+  sharpness.addEventListener('input', () => {
+    sharpnessVal.textContent = sharpness.value + '%';
+    updateStylePreview();
   });
-  detailLevel.addEventListener('input', () => {
-    detailVal.textContent = detailLevel.value + 'px';
-    liveRegenerate();
+  structure.addEventListener('input', () => {
+    structureVal.textContent = structure.value + '%';
+    updateStylePreview();
   });
+  brightnessEl.addEventListener('input', () => {
+    brightnessVal.textContent = brightnessEl.value;
+    updateStylePreview();
+  });
+  contrastEl.addEventListener('input', () => {
+    contrastVal.textContent = contrastEl.value;
+    updateStylePreview();
+  });
+  saturationEl.addEventListener('input', () => {
+    saturationVal.textContent = saturationEl.value;
+    updateStylePreview();
+  });
+  warmthEl.addEventListener('input', () => {
+    warmthVal.textContent = warmthEl.value;
+    updateStylePreview();
+  });
+  cartoonOutlines.addEventListener('change', () => { updateStylePreview(); });
 
-  function liveRegenerate() {
-    // Only auto-regen if the output is already showing
-    if (!loadedImage || output.hidden) return;
-    stopAnim();
-    clearTimeout(regenTimer);
-    regenTimer = setTimeout(() => {
-      generate(loadedImage, parseInt(colorCount.value), lastCrop);
-    }, 300);
+  function updateStylePreview() {
+    if (!loadedImage) return;
+    applyStylePreview();
   }
 
   function setImage(file) {
     const img = new Image();
     img.onload = () => {
       loadedImage = img;
-      generateBtn.disabled = false;
       output.hidden = true;
-      cropSection.hidden = true;
+      controlsSection.hidden = true;
       previewImg.src = img.src;
       uploadPlaceholder.hidden = true;
       uploadPreview.hidden = false;
+      // Show style picker
+      styleSection.hidden = false;
+      applyStylePreview();
+      styleSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
     img.src = URL.createObjectURL(file);
   }
@@ -93,100 +325,315 @@
 
   removeBtn.addEventListener('click', () => {
     loadedImage = null;
+    styledImage = null;
     generateBtn.disabled = true;
     uploadPlaceholder.hidden = false;
     uploadPreview.hidden = true;
     imageInput.value = '';
     output.hidden = true;
-    cropSection.hidden = true;
+    styleSection.hidden = true;
+    controlsSection.hidden = true;
   });
+
+  const generateText = $('generateText');
+  const generateSpinner = $('generateSpinner');
 
   generateBtn.addEventListener('click', () => {
-    if (!loadedImage) return;
+    if (!styledImage) return;
     output.hidden = true;
-    showCrop(loadedImage);
-  });
-
-  // --- Crop UI ---
-  function showCrop(img) {
-    cropSection.hidden = false;
-    const MAX = 600;
-    let dw = img.width, dh = img.height;
-    if (dw > MAX || dh > MAX) { const s = MAX / Math.max(dw, dh); dw = Math.round(dw * s); dh = Math.round(dh * s); }
-    displayScale = img.width / dw;
-    cropCanvas.width = dw;
-    cropCanvas.height = dh;
-    cropRect = null;
-    drawCropPreview(img, dw, dh);
-    cropSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-
-  function drawCropPreview(img, dw, dh) {
-    const ctx = cropCanvas.getContext('2d');
-    ctx.clearRect(0, 0, dw, dh);
-    ctx.drawImage(img, 0, 0, dw, dh);
-    if (!cropRect) return;
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillRect(0, 0, dw, cropRect.y);
-    ctx.fillRect(0, cropRect.y + cropRect.h, dw, dh - cropRect.y - cropRect.h);
-    ctx.fillRect(0, cropRect.y, cropRect.x, cropRect.h);
-    ctx.fillRect(cropRect.x + cropRect.w, cropRect.y, dw - cropRect.x - cropRect.w, cropRect.h);
-    ctx.strokeStyle = var_primary();
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 3]);
-    ctx.strokeRect(cropRect.x, cropRect.y, cropRect.w, cropRect.h);
-    ctx.setLineDash([]);
-  }
-  function var_primary() { return '#4f6ef7'; }
-
-  function canvasCoords(e) {
-    const r = cropCanvas.getBoundingClientRect();
-    return { x: (e.clientX - r.left) * (cropCanvas.width / r.width), y: (e.clientY - r.top) * (cropCanvas.height / r.height) };
-  }
-
-  cropCanvas.addEventListener('mousedown', (e) => { dragging = true; dragStart = canvasCoords(e); });
-  cropCanvas.addEventListener('mousemove', (e) => {
-    if (!dragging || !dragStart || !loadedImage) return;
-    const pos = canvasCoords(e);
-    const ratio = PAGE_RATIOS[pageSizeEl.value];
-    let x = Math.min(dragStart.x, pos.x), y = Math.min(dragStart.y, pos.y);
-    let w = Math.abs(pos.x - dragStart.x), h = Math.abs(pos.y - dragStart.y);
-    if (ratio) { h = w / ratio; if (pos.y < dragStart.y) y = dragStart.y - h; }
-    if (x < 0) x = 0; if (y < 0) y = 0;
-    if (x + w > cropCanvas.width) w = cropCanvas.width - x;
-    if (y + h > cropCanvas.height) h = cropCanvas.height - y;
-    cropRect = { x, y, w, h };
-    drawCropPreview(loadedImage, cropCanvas.width, cropCanvas.height);
-  });
-  cropCanvas.addEventListener('mouseup', () => { dragging = false; });
-  cropCanvas.addEventListener('mouseleave', () => { dragging = false; });
-
-  // Touch
-  cropCanvas.addEventListener('touchstart', (e) => { e.preventDefault(); dragging = true; dragStart = canvasCoords(e.touches[0]); }, { passive: false });
-  cropCanvas.addEventListener('touchmove', (e) => {
-    e.preventDefault(); if (!dragging) return;
-    const t = e.touches[0];
-    cropCanvas.dispatchEvent(new MouseEvent('mousemove', { clientX: t.clientX, clientY: t.clientY }));
-  }, { passive: false });
-  cropCanvas.addEventListener('touchend', () => { dragging = false; });
-
-  cropResetBtn.addEventListener('click', () => { cropRect = null; if (loadedImage) drawCropPreview(loadedImage, cropCanvas.width, cropCanvas.height); });
-  cropSkipBtn.addEventListener('click', () => { cropRect = null; runGenerate(); });
-  cropConfirmBtn.addEventListener('click', () => { runGenerate(); });
-
-  function runGenerate() {
-    cropSection.hidden = true;
     generateBtn.disabled = true;
-    generateBtn.textContent = 'Processing…';
+    generateText.textContent = 'Painting…';
+    generateSpinner.hidden = false;
     requestAnimationFrame(() => setTimeout(() => {
-      lastCrop = cropRect ? {
-        x: Math.round(cropRect.x * displayScale), y: Math.round(cropRect.y * displayScale),
-        w: Math.round(cropRect.w * displayScale), h: Math.round(cropRect.h * displayScale),
-      } : null;
-      generate(loadedImage, parseInt(colorCount.value), lastCrop);
+      // Re-apply style with current settings before generating
+      applyStylePreview();
+      generate(styledImage, parseInt(colorCount.value), null);
       generateBtn.disabled = false;
-      generateBtn.textContent = 'Generate';
-    }, 50));
+      generateText.textContent = '🎨 Generate';
+      generateSpinner.hidden = true;
+    }, 80));
+  });
+
+  // --- Style Selection ---
+  styleGrid.addEventListener('click', (e) => {
+    const card = e.target.closest('.style-card');
+    if (!card) return;
+    styleGrid.querySelectorAll('.style-card').forEach(c => c.classList.remove('active'));
+    card.classList.add('active');
+    currentStyle = card.dataset.style;
+    applyStylePreview();
+  });
+
+  function applyStylePreview() {
+    if (!loadedImage) return;
+    const MAX = 400;
+    let w = loadedImage.width, h = loadedImage.height;
+    if (w > MAX || h > MAX) { const s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+    stylePreviewCanvas.width = w;
+    stylePreviewCanvas.height = h;
+    const ctx = stylePreviewCanvas.getContext('2d');
+    ctx.drawImage(loadedImage, 0, 0, w, h);
+    const imgData = ctx.getImageData(0, 0, w, h);
+    applyStyleFilter(imgData, currentStyle, w, h);
+    ctx.putImageData(imgData, 0, 0);
+
+    // Store full-res styled image for generate
+    const fullW = loadedImage.width, fullH = loadedImage.height;
+    const fullCanvas = document.createElement('canvas');
+    fullCanvas.width = fullW; fullCanvas.height = fullH;
+    const fCtx = fullCanvas.getContext('2d');
+    fCtx.drawImage(loadedImage, 0, 0);
+    const fullData = fCtx.getImageData(0, 0, fullW, fullH);
+    applyStyleFilter(fullData, currentStyle, fullW, fullH);
+    fCtx.putImageData(fullData, 0, 0);
+    // Convert to an Image
+    const sImg = new Image();
+    sImg.onload = () => {
+      styledImage = sImg;
+      generateBtn.disabled = false;
+      controlsSection.hidden = false;
+    };
+    sImg.src = fullCanvas.toDataURL();
+  }
+
+  function applyStyleFilter(imgData, style, w, h) {
+    const d = imgData.data;
+    switch (style) {
+      case 'realistic': break; // sharpness/structure sliders handle it
+      case 'watercolor': filterWatercolor(d, w, h); break;
+      case 'cartoon': filterCartoon(d, w, h); break;
+      case 'posterize': filterPosterize(d, w, h); break;
+      case 'softpastel': filterSoftPastel(d, w, h); break;
+      case 'oilpaint': filterOilPaint(d, w, h); break;
+    }
+    // Always apply sharpness and structure from sliders
+    const sharpAmt = parseInt(sharpness.value) / 100;
+    const structAmt = parseInt(structure.value) / 100;
+    if (sharpAmt > 0) {
+      const blurred = new Uint8ClampedArray(d);
+      boxBlur(blurred, w, h, 2);
+      for (let i = 0; i < d.length; i += 4) {
+        d[i]   = clamp(d[i]   + (d[i]   - blurred[i])   * sharpAmt);
+        d[i+1] = clamp(d[i+1] + (d[i+1] - blurred[i+1]) * sharpAmt);
+        d[i+2] = clamp(d[i+2] + (d[i+2] - blurred[i+2]) * sharpAmt);
+      }
+    }
+    if (structAmt > 0) {
+      // Contrast boost for structure
+      for (let i = 0; i < d.length; i += 4) {
+        d[i]   = clamp((d[i]   - 128) * (1 + structAmt) + 128);
+        d[i+1] = clamp((d[i+1] - 128) * (1 + structAmt) + 128);
+        d[i+2] = clamp((d[i+2] - 128) * (1 + structAmt) + 128);
+      }
+      // Saturation boost proportional to structure
+      const satBoost = 1 + structAmt * 0.5;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+        d[i]   = clamp(gray + (d[i]   - gray) * satBoost);
+        d[i+1] = clamp(gray + (d[i+1] - gray) * satBoost);
+        d[i+2] = clamp(gray + (d[i+2] - gray) * satBoost);
+      }
+    }
+    // Brightness
+    const bright = parseInt(brightnessEl.value);
+    if (bright !== 0) {
+      const b = bright * 2.55; // map -100..100 to -255..255
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] = clamp(d[i] + b); d[i+1] = clamp(d[i+1] + b); d[i+2] = clamp(d[i+2] + b);
+      }
+    }
+    // Contrast
+    const cont = parseInt(contrastEl.value);
+    if (cont !== 0) {
+      const f = (259 * (cont + 255)) / (255 * (259 - cont));
+      for (let i = 0; i < d.length; i += 4) {
+        d[i]   = clamp(f * (d[i]   - 128) + 128);
+        d[i+1] = clamp(f * (d[i+1] - 128) + 128);
+        d[i+2] = clamp(f * (d[i+2] - 128) + 128);
+      }
+    }
+    // Saturation
+    const sat = parseInt(saturationEl.value);
+    if (sat !== 0) {
+      const s = 1 + sat / 100;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+        d[i]   = clamp(gray + (d[i]   - gray) * s);
+        d[i+1] = clamp(gray + (d[i+1] - gray) * s);
+        d[i+2] = clamp(gray + (d[i+2] - gray) * s);
+      }
+    }
+    // Warmth (shift red up / blue down, or vice versa)
+    const warm = parseInt(warmthEl.value);
+    if (warm !== 0) {
+      const shift = warm * 0.3;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i]   = clamp(d[i]   + shift);      // red
+        d[i+2] = clamp(d[i+2] - shift);      // blue
+      }
+    }
+    // Cartoon outlines: Sobel edge detection, darken edges
+    if (cartoonOutlines.checked) {
+      const gray = new Float32Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        gray[i] = 0.299*d[i*4] + 0.587*d[i*4+1] + 0.114*d[i*4+2];
+      }
+      const edges = new Float32Array(w * h);
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        const gx = -gray[idx-w-1] - 2*gray[idx-1] - gray[idx+w-1]
+                   + gray[idx-w+1] + 2*gray[idx+1] + gray[idx+w+1];
+        const gy = -gray[idx-w-1] - 2*gray[idx-w] - gray[idx-w+1]
+                   + gray[idx+w-1] + 2*gray[idx+w] + gray[idx+w+1];
+        edges[idx] = Math.sqrt(gx*gx + gy*gy);
+      }
+      let maxEdge = 0;
+      for (let i = 0; i < edges.length; i++) if (edges[i] > maxEdge) maxEdge = edges[i];
+      if (maxEdge > 0) {
+        const threshold = 0.15;
+        for (let i = 0; i < w * h; i++) {
+          const e = edges[i] / maxEdge;
+          if (e > threshold) {
+            const darken = Math.min(1, (e - threshold) / (1 - threshold));
+            const factor = 1 - darken * 0.85;
+            const pi = i * 4;
+            d[pi]   = clamp(d[pi]   * factor);
+            d[pi+1] = clamp(d[pi+1] * factor);
+            d[pi+2] = clamp(d[pi+2] * factor);
+          }
+        }
+      }
+    }
+  }
+
+  function filterWatercolor(d, w, h) {
+    // Edge-preserving smooth to flatten areas while keeping edges
+    edgePreservingSmooth(d, w, h, 4, 25);
+    // Quantize to fewer tonal steps for that watercolor "wash" look
+    const steps = 10;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]   = Math.round(d[i]   / (256/steps)) * (256/steps);
+      d[i+1] = Math.round(d[i+1] / (256/steps)) * (256/steps);
+      d[i+2] = Math.round(d[i+2] / (256/steps)) * (256/steps);
+    }
+    // Boost saturation + lighten for translucent watercolor feel
+    for (let i = 0; i < d.length; i += 4) {
+      const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      d[i]   = clamp(gray + (d[i]   - gray) * 1.5);
+      d[i+1] = clamp(gray + (d[i+1] - gray) * 1.5);
+      d[i+2] = clamp(gray + (d[i+2] - gray) * 1.5);
+      d[i]   = clamp(d[i]   * 0.82 + 255 * 0.18);
+      d[i+1] = clamp(d[i+1] * 0.82 + 255 * 0.18);
+      d[i+2] = clamp(d[i+2] * 0.82 + 255 * 0.18);
+    }
+  }
+
+  function filterCartoon(d, w, h) {
+    // Posterize to fewer levels + boost contrast
+    const levels = 6;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]   = Math.round(d[i]   / (256/levels)) * (256/levels);
+      d[i+1] = Math.round(d[i+1] / (256/levels)) * (256/levels);
+      d[i+2] = Math.round(d[i+2] / (256/levels)) * (256/levels);
+      // Boost contrast
+      d[i]   = clamp((d[i]   - 128) * 1.4 + 128);
+      d[i+1] = clamp((d[i+1] - 128) * 1.4 + 128);
+      d[i+2] = clamp((d[i+2] - 128) * 1.4 + 128);
+    }
+  }
+
+  function filterPosterize(d, w, h) {
+    // Strong posterize + vivid saturation
+    const levels = 4;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]   = Math.round(d[i]   / (256/levels)) * (256/levels);
+      d[i+1] = Math.round(d[i+1] / (256/levels)) * (256/levels);
+      d[i+2] = Math.round(d[i+2] / (256/levels)) * (256/levels);
+      const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      d[i]   = clamp(gray + (d[i]   - gray) * 2.0);
+      d[i+1] = clamp(gray + (d[i+1] - gray) * 2.0);
+      d[i+2] = clamp(gray + (d[i+2] - gray) * 2.0);
+    }
+  }
+
+  function filterSoftPastel(d, w, h) {
+    // Edge-preserving smooth for soft look without losing structure
+    edgePreservingSmooth(d, w, h, 3, 20);
+    // Desaturate partially + lighten for chalky pastel feel
+    for (let i = 0; i < d.length; i += 4) {
+      const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      // Partial desaturation
+      d[i]   = clamp(gray + (d[i]   - gray) * 0.65);
+      d[i+1] = clamp(gray + (d[i+1] - gray) * 0.65);
+      d[i+2] = clamp(gray + (d[i+2] - gray) * 0.65);
+      // Lighten
+      d[i]   = clamp(d[i]   * 0.72 + 255 * 0.28);
+      d[i+1] = clamp(d[i+1] * 0.72 + 255 * 0.28);
+      d[i+2] = clamp(d[i+2] * 0.72 + 255 * 0.28);
+    }
+    // Slight quantize for that grainy pastel texture
+    const steps = 12;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]   = Math.round(d[i]   / (256/steps)) * (256/steps);
+      d[i+1] = Math.round(d[i+1] / (256/steps)) * (256/steps);
+      d[i+2] = Math.round(d[i+2] / (256/steps)) * (256/steps);
+    }
+  }
+
+  function filterOilPaint(d, w, h) {
+    // Strong edge-preserving smooth for thick paint look
+    edgePreservingSmooth(d, w, h, 5, 30);
+    edgePreservingSmooth(d, w, h, 3, 20);
+    // Rich saturation + contrast for bold oil paint colors
+    for (let i = 0; i < d.length; i += 4) {
+      const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      d[i]   = clamp(gray + (d[i]   - gray) * 1.7);
+      d[i+1] = clamp(gray + (d[i+1] - gray) * 1.7);
+      d[i+2] = clamp(gray + (d[i+2] - gray) * 1.7);
+      d[i]   = clamp((d[i]   - 128) * 1.25 + 128);
+      d[i+1] = clamp((d[i+1] - 128) * 1.25 + 128);
+      d[i+2] = clamp((d[i+2] - 128) * 1.25 + 128);
+    }
+  }
+
+  function clamp(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+
+  // Edge-preserving smooth: averages only neighbors within a color threshold.
+  // Flattens smooth areas into uniform regions while keeping edges sharp.
+  function edgePreservingSmooth(d, w, h, radius, threshold) {
+    const copy = new Uint8ClampedArray(d);
+    const tSq = threshold * threshold * 3; // threshold in squared RGB distance
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const pi = (y * w + x) * 4;
+      const cr = copy[pi], cg = copy[pi+1], cb = copy[pi+2];
+      let sr = 0, sg = 0, sb = 0, cnt = 0;
+      for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+        const ny = y + dy, nx = x + dx;
+        if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
+        const ni = (ny * w + nx) * 4;
+        const dr = copy[ni] - cr, dg = copy[ni+1] - cg, db = copy[ni+2] - cb;
+        if (dr*dr + dg*dg + db*db <= tSq) {
+          sr += copy[ni]; sg += copy[ni+1]; sb += copy[ni+2]; cnt++;
+        }
+      }
+      d[pi] = sr / cnt; d[pi+1] = sg / cnt; d[pi+2] = sb / cnt;
+    }
+  }
+
+  function boxBlur(d, w, h, radius) {
+    const copy = new Uint8ClampedArray(d);
+    const size = (radius * 2 + 1) ** 2;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let r = 0, g = 0, b = 0, cnt = 0;
+      for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+        const ny = y + dy, nx = x + dx;
+        if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
+        const pi = (ny * w + nx) * 4;
+        r += copy[pi]; g += copy[pi+1]; b += copy[pi+2]; cnt++;
+      }
+      const pi = (y * w + x) * 4;
+      d[pi] = r / cnt; d[pi+1] = g / cnt; d[pi+2] = b / cnt;
+    }
   }
 
   // --- Download ---
@@ -301,15 +748,67 @@
     const colors = [];
     for (let i = 0; i < pixels.length; i += 4) colors.push([pixels[i], pixels[i+1], pixels[i+2]]);
 
-    let palette = medianCut(colors, Math.min(colors.length, numColors * 2));
-    // Always include white in the palette
-    palette.unshift([255, 255, 255]);
+    let palette;
+    let paletteLabels = null;
+    if (useCustomPalette.checked && customPaints.length >= 2) {
+      const paintColors = customPaints.map(p => [p.r, p.g, p.b]);
+      const paintNames = customPaints.map(p => p.name || p.hex);
 
-    // Merge down to exactly numColors by repeatedly merging the closest pair
-    palette = mergeToCount(palette, numColors);
+      // Build palette: base paints + optional mixes
+      let extColors = paintColors.map((c, i) => ({ rgb: c, label: paintNames[i] }));
 
+      if (allowMixing.checked) {
+        // Find what colors the image needs
+        const targetCount = Math.min(colors.length, Math.max(paintColors.length * 3, 20));
+        const imageClusters = medianCut(colors, targetCount);
+        const mixSet = new Set();
+        const MIX_RATIOS = [0.25, 0.5, 0.75];
+
+        for (const target of imageClusters) {
+          let bestBaseDist = Infinity;
+          for (const pc of paintColors) {
+            const d = colorDistSq(target, pc);
+            if (d < bestBaseDist) bestBaseDist = d;
+          }
+          let bestMixDist = Infinity, bestMix = null, bestLabel = '', bestKey = '';
+          for (let i = 0; i < paintColors.length; i++) {
+            for (let j = i + 1; j < paintColors.length; j++) {
+              for (const r of MIX_RATIOS) {
+                const mix = [
+                  Math.round(paintColors[i][0]*r + paintColors[j][0]*(1-r)),
+                  Math.round(paintColors[i][1]*r + paintColors[j][1]*(1-r)),
+                  Math.round(paintColors[i][2]*r + paintColors[j][2]*(1-r)),
+                ];
+                const d = colorDistSq(target, mix);
+                if (d < bestMixDist) {
+                  bestMixDist = d;
+                  bestMix = mix;
+                  const pct = Math.round(r * 100);
+                  bestLabel = pct === 50 ? `${paintNames[i]} + ${paintNames[j]}` : `${pct}% ${paintNames[i]} + ${100-pct}% ${paintNames[j]}`;
+                  bestKey = `${i}-${j}-${r}`;
+                }
+              }
+            }
+          }
+          if (bestMix && bestMixDist < bestBaseDist * 0.7 && !mixSet.has(bestKey)) {
+            mixSet.add(bestKey);
+            extColors.push({ rgb: bestMix, label: bestLabel });
+          }
+        }
+      }
+
+      palette = extColors.map(e => e.rgb);
+      paletteLabels = extColors.map(e => ({ name: e.label, hex: rgbToHex(e.rgb) }));
+    } else {
+      palette = medianCut(colors, Math.min(colors.length, numColors * 2));
+      palette.unshift([255, 255, 255]);
+      palette = mergeToCount(palette, numColors);
+    }
+
+    // Direct mapping: every pixel to nearest palette color
     let mapped = new Uint8Array(w * h);
     for (let i = 0; i < colors.length; i++) mapped[i] = nearestColor(colors[i], palette);
+    mapped = modeFilter(mapped, w, h);
     mapped = modeFilter(mapped, w, h);
 
     const regionMap = new Int32Array(w * h).fill(-1);
@@ -321,6 +820,14 @@
       regionColors.push(mapped[i]);
       regionId++;
     }
+
+    // Merge only very tiny regions (speckle noise)
+    mergeSmallRegions(regionMap, regionColors, mapped, w, h, regionId, 25);
+
+    // Smooth jagged boundaries: pixels on region edges adopt the majority
+    // region of their 5x5 neighborhood. This rounds off staircase edges
+    // without removing small regions entirely.
+    smoothBoundaries(regionMap, mapped, regionColors, w, h);
 
     const paletteNumbers = new Map();
     let num = 1;
@@ -335,19 +842,28 @@
     // Pre-compute label positions
     const MIN_REGION = 30;
     const labels = [];
+    let minFs = Infinity;
     for (let r = 0; r < regionId; r++) {
       const pxList = regionPixels[r];
       if (pxList.length < MIN_REGION) continue;
       const pt = findInteriorPoint(regionMap, w, h, r, pxList);
+      const maxByDist = pt.dist * 1.2;
+      const maxByArea = Math.sqrt(pxList.length) / 4;
+      const fs = Math.max(4, Math.min(12, maxByDist, maxByArea));
+      if (fs < minFs) minFs = fs;
       labels.push({
         x: pt.x, y: pt.y,
         text: String(paletteNumbers.get(regionColors[r])),
-        fs: Math.max(7, Math.min(13, Math.sqrt(pxList.length) / 3)),
+        fs,
       });
     }
 
+    // Compute upscale factor so smallest number is at least 10px
+    const MIN_READABLE = 10;
+    const upscale = (minFs < MIN_READABLE && minFs > 0) ? Math.ceil(MIN_READABLE / minFs) : 1;
+
     // Store for re-render
-    renderData = { w, h, mapped, palette, regionMap, labels, paletteNumbers, regionColors, regionPixels, regionId };
+    renderData = { w, h, mapped, palette, regionMap, labels, paletteNumbers, regionColors, regionPixels, regionId, paletteLabels, upscale };
 
     renderCanvas(outlineOnly.checked);
 
@@ -355,9 +871,13 @@
     legend.innerHTML = '';
     for (const [ci, n] of paletteNumbers) {
       const c = palette[ci], hex = rgbToHex(c);
+      let label = hex;
+      if (paletteLabels && paletteLabels[ci]) {
+        label = paletteLabels[ci].name;
+      }
       const item = document.createElement('div');
       item.className = 'legend-item';
-      item.innerHTML = `<span class="legend-swatch" style="background:${hex}">${n}</span><span>${hex}</span>`;
+      item.innerHTML = `<span class="legend-swatch" style="background:${hex}">${n}</span><span>${label}</span>`;
       legend.appendChild(item);
     }
     output.hidden = false;
@@ -367,19 +887,23 @@
 
   function renderCanvas(outlineMode) {
     if (!renderData) return;
-    const { w, h, mapped, palette, regionMap, labels } = renderData;
+    const { w, h, mapped, palette, regionMap, labels, upscale } = renderData;
+    const s = upscale || 1;
+    const ow = w * s, oh = h * s;
 
-    resultCanvas.width = w; resultCanvas.height = h;
+    resultCanvas.width = ow; resultCanvas.height = oh;
     const ctx = resultCanvas.getContext('2d');
 
-    // Fill
-    const outData = ctx.createImageData(w, h);
-    for (let i = 0; i < w * h; i++) {
-      const pi = i * 4;
+    // Fill at upscaled resolution
+    const outData = ctx.createImageData(ow, oh);
+    for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+      const sx = Math.floor(x / s), sy = Math.floor(y / s);
+      const si = sy * w + sx;
+      const pi = (y * ow + x) * 4;
       if (outlineMode) {
         outData.data[pi] = 255; outData.data[pi+1] = 255; outData.data[pi+2] = 255;
       } else {
-        const c = palette[mapped[i]];
+        const c = palette[mapped[si]];
         outData.data[pi]   = Math.round(c[0] * 0.25 + 255 * 0.75);
         outData.data[pi+1] = Math.round(c[1] * 0.25 + 255 * 0.75);
         outData.data[pi+2] = Math.round(c[2] * 0.25 + 255 * 0.75);
@@ -389,26 +913,29 @@
     ctx.putImageData(outData, 0, 0);
 
     // Outlines
-    ctx.strokeStyle = outlineMode ? 'rgba(0,0,0,0.85)' : 'rgba(80,80,80,0.7)';
-    ctx.lineWidth = outlineMode ? 0.8 : 0.6;
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = outlineMode ? Math.max(0.8, s * 0.5) : Math.max(0.7, s * 0.4);
     ctx.beginPath();
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const idx = y * w + x, rid = regionMap[idx];
-      if (x < w - 1 && regionMap[idx + 1] !== rid) { ctx.moveTo(x + 1, y); ctx.lineTo(x + 1, y + 1); }
-      if (y < h - 1 && regionMap[idx + w] !== rid) { ctx.moveTo(x, y + 1); ctx.lineTo(x + 1, y + 1); }
+      if (x < w - 1 && regionMap[idx + 1] !== rid) { ctx.moveTo((x+1)*s, y*s); ctx.lineTo((x+1)*s, (y+1)*s); }
+      if (y < h - 1 && regionMap[idx + w] !== rid) { ctx.moveTo(x*s, (y+1)*s); ctx.lineTo((x+1)*s, (y+1)*s); }
     }
     ctx.stroke();
 
     // Numbers
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const lb of labels) {
-      ctx.font = `500 ${lb.fs}px Inter,system-ui`;
+      const fs = lb.fs * s;
+      ctx.font = `500 ${fs}px Inter,system-ui`;
       if (outlineMode) {
         ctx.fillStyle = '#000';
-        ctx.fillText(lb.text, lb.x, lb.y);
+        ctx.fillText(lb.text, lb.x * s + s/2, lb.y * s + s/2);
       } else {
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeText(lb.text, lb.x, lb.y);
-        ctx.fillStyle = '#222'; ctx.fillText(lb.text, lb.x, lb.y);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, s * 0.8);
+        ctx.strokeText(lb.text, lb.x * s + s/2, lb.y * s + s/2);
+        ctx.fillStyle = '#222';
+        ctx.fillText(lb.text, lb.x * s + s/2, lb.y * s + s/2);
       }
     }
   }
@@ -428,19 +955,20 @@
   previewAnimBtn.addEventListener('click', () => {
     if (!renderData) return;
 
-    // If already animating, stop and restore static view
     if (animId) {
       stopAnim();
       renderCanvas(outlineOnly.checked);
       return;
     }
 
-    const { w, h, palette, regionMap, regionColors, regionPixels, regionId } = renderData;
+    const { w, h, palette, regionMap, regionColors, regionPixels, regionId, upscale } = renderData;
+    const s = upscale || 1;
+    const ow = w * s, oh = h * s;
 
     // 1. Render the outline-only base and snapshot its pixels
     renderCanvas(true);
     const ctx = resultCanvas.getContext('2d');
-    const baseSnapshot = ctx.getImageData(0, 0, w, h).data;
+    const baseSnapshot = ctx.getImageData(0, 0, ow, oh).data;
 
     // 2. Create a fresh working buffer copied from the base
     const workBuf = new Uint8ClampedArray(baseSnapshot);
@@ -463,28 +991,28 @@
       const progress = Math.min((now - startTime) / DURATION, 1);
       const target = Math.floor(progress * totalRegions);
 
-      // Paint newly revealed regions into the working buffer
       for (let ri = painted; ri < target; ri++) {
         const r = order[ri];
         const pxList = regionPixels[r];
         if (!pxList) continue;
         const c = palette[regionColors[r]];
         if (!c) continue;
+        // Fill upscaled pixels for this region
         for (let p = 0; p < pxList.length; p++) {
           const px = pxList[p] & 0xFFFF, py = pxList[p] >> 16;
-          const pi = (py * w + px) * 4;
-          // Keep dark outline pixels from the base, only color the white areas
-          if (baseSnapshot[pi] > 180) {
-            workBuf[pi] = c[0];
-            workBuf[pi + 1] = c[1];
-            workBuf[pi + 2] = c[2];
+          for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) {
+            const ox = px * s + dx, oy = py * s + dy;
+            if (ox >= ow || oy >= oh) continue;
+            const pi = (oy * ow + ox) * 4;
+            if (baseSnapshot[pi] > 180) {
+              workBuf[pi] = c[0]; workBuf[pi+1] = c[1]; workBuf[pi+2] = c[2];
+            }
           }
         }
       }
       painted = target;
 
-      // Write buffer to canvas
-      const imgData = new ImageData(new Uint8ClampedArray(workBuf), w, h);
+      const imgData = new ImageData(new Uint8ClampedArray(workBuf), ow, oh);
       ctx.putImageData(imgData, 0, 0);
 
       if (progress < 1) {
@@ -533,7 +1061,7 @@
       if (!found) minEdgeDist = maxR;
       if (minEdgeDist > bestDist) { bestDist = minEdgeDist; bestX = px; bestY = py; }
     }
-    return { x: bestX, y: bestY };
+    return { x: bestX, y: bestY, dist: bestDist };
   }
 
   // --- Utilities ---
@@ -614,16 +1142,97 @@
     return entries.map(e => [Math.round(e.r), Math.round(e.g), Math.round(e.b)]);
   }
 
+  function colorDistSq(a, b) {
+    const dr = a[0]-b[0], dg = a[1]-b[1], db = a[2]-b[2];
+    return dr*dr + dg*dg + db*db;
+  }
+
   function nearestColor(pixel, palette) {
     let minDist = Infinity, best = 0;
     for (let i = 0; i < palette.length; i++) {
-      const dr = pixel[0] - palette[i][0];
-      const dg = pixel[1] - palette[i][1];
-      const db = pixel[2] - palette[i][2];
-      const d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+      const d = colorDistSq(pixel, palette[i]);
       if (d < minDist) { minDist = d; best = i; }
     }
     return best;
+  }
+
+  // Smooth jagged region boundaries by reassigning edge pixels to the
+  // majority region in a small neighborhood. Preserves region shapes
+  // but rounds off staircase/zigzag edges.
+  function smoothBoundaries(regionMap, mapped, regionColors, w, h) {
+    const size = w * h;
+    for (let pass = 0; pass < 2; pass++) {
+      const newMap = new Int32Array(regionMap);
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        const cur = regionMap[idx];
+        // Only process boundary pixels
+        if (regionMap[idx-1] === cur && regionMap[idx+1] === cur &&
+            regionMap[idx-w] === cur && regionMap[idx+w] === cur) continue;
+        // Count regions in 5x5 neighborhood
+        const counts = {};
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+          const ny = y+dy, nx = x+dx;
+          if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
+          const r = regionMap[ny * w + nx];
+          counts[r] = (counts[r] || 0) + 1;
+        }
+        // Find majority
+        let best = cur, bestCnt = 0;
+        for (const [r, cnt] of Object.entries(counts)) {
+          if (cnt > bestCnt) { bestCnt = cnt; best = parseInt(r); }
+        }
+        if (best !== cur) {
+          newMap[idx] = best;
+        }
+      }
+      // Apply
+      for (let i = 0; i < size; i++) {
+        if (newMap[i] !== regionMap[i]) {
+          regionMap[i] = newMap[i];
+          mapped[i] = regionColors[regionMap[i]];
+        }
+      }
+    }
+  }
+
+  // Iteratively merge regions smaller than threshold into their largest neighbor
+  function mergeSmallRegions(regionMap, regionColors, mapped, w, h, regionId, threshold) {
+    const size = w * h;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      // Compute sizes
+      const regionSizes = new Int32Array(regionId);
+      for (let i = 0; i < size; i++) regionSizes[regionMap[i]]++;
+
+      // Build neighbor map for small regions
+      for (let r = 0; r < regionId; r++) {
+        if (regionSizes[r] === 0 || regionSizes[r] >= threshold) continue;
+        const neighborCounts = {};
+        for (let i = 0; i < size; i++) {
+          if (regionMap[i] !== r) continue;
+          const x = i % w, y = (i - x) / w;
+          if (x > 0 && regionMap[i-1] !== r) neighborCounts[regionMap[i-1]] = (neighborCounts[regionMap[i-1]]||0) + 1;
+          if (x < w-1 && regionMap[i+1] !== r) neighborCounts[regionMap[i+1]] = (neighborCounts[regionMap[i+1]]||0) + 1;
+          if (y > 0 && regionMap[i-w] !== r) neighborCounts[regionMap[i-w]] = (neighborCounts[regionMap[i-w]]||0) + 1;
+          if (y < h-1 && regionMap[i+w] !== r) neighborCounts[regionMap[i+w]] = (neighborCounts[regionMap[i+w]]||0) + 1;
+        }
+        // Find largest neighbor
+        let best = -1, bestCnt = 0;
+        for (const [nr, cnt] of Object.entries(neighborCounts)) {
+          if (cnt > bestCnt) { bestCnt = cnt; best = parseInt(nr); }
+        }
+        if (best === -1) continue;
+        // Absorb
+        for (let i = 0; i < size; i++) {
+          if (regionMap[i] === r) { regionMap[i] = best; mapped[i] = regionColors[best]; }
+        }
+        regionSizes[best] += regionSizes[r];
+        regionSizes[r] = 0;
+        changed = true;
+      }
+    }
   }
 
   function floodFill(mapped, regionMap, w, h, sx, sy, colorIdx, regionId) {
