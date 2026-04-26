@@ -35,12 +35,14 @@
     <section class="card" id="styleSection" hidden>
       <h2 class="card-title">Choose a Style</h2>
       <div class="style-grid" id="styleGrid">
-        <button class="style-card active" data-style="realistic"><span class="style-icon">📷</span><span>Realistic</span></button>
+        <button class="style-card active" data-style="none"><span class="style-icon">🚫</span><span>No Filter</span></button>
+        <button class="style-card" data-style="realistic"><span class="style-icon">📷</span><span>Realistic</span></button>
         <button class="style-card" data-style="watercolor"><span class="style-icon">💧</span><span>Watercolor</span></button>
         <button class="style-card" data-style="cartoon"><span class="style-icon">✏️</span><span>Cartoon</span></button>
         <button class="style-card" data-style="posterize"><span class="style-icon">🎭</span><span>Pop Art</span></button>
         <button class="style-card" data-style="softpastel"><span class="style-icon">🌸</span><span>Soft Pastel</span></button>
         <button class="style-card" data-style="oilpaint"><span class="style-icon">🖌️</span><span>Oil Paint</span></button>
+        <button class="style-card" data-style="oilpaint2"><span class="style-icon">🎨</span><span>Oil Paint 2</span></button>
       </div>
       <div class="style-preview-wrap">
         <canvas id="stylePreviewCanvas"></canvas>
@@ -52,6 +54,19 @@
       <h2 class="card-title">Settings</h2>
       <div class="controls-row">
         <div class="control-group">
+          <label for="pageSize">Print Size</label>
+          <select id="pageSize" class="select-input">
+            <option value="custom">Custom</option>
+            <option value="4x6">4×6 Photo</option>
+            <option value="5x7">5×7 Photo</option>
+            <option value="a5">A5 (148×210mm)</option>
+            <option value="letter" selected>Letter (8.5×11")</option>
+            <option value="a4">A4 (210×297mm)</option>
+            <option value="a3">A3 (297×420mm)</option>
+            <option value="a2">A2 (420×594mm)</option>
+          </select>
+        </div>
+        <div class="control-group">
           <label for="colorCount">Colors</label>
           <div class="range-wrap">
             <input type="range" id="colorCount" min="4" max="32" value="8">
@@ -59,10 +74,17 @@
           </div>
         </div>
         <div class="control-group">
-          <label for="detailLevel">Detail</label>
+          <label for="detailLevel">Detail <span id="detailAuto" class="detail-auto">(auto)</span></label>
           <div class="range-wrap">
             <input type="range" id="detailLevel" min="300" max="3000" step="100" value="600">
             <span class="range-val" id="detailVal">600px</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="minRegionSize">Min Region Size</label>
+          <div class="range-wrap">
+            <input type="range" id="minRegionSize" min="10" max="200" step="5" value="25">
+            <span class="range-val" id="minRegionVal">25px</span>
           </div>
         </div>
         <div class="control-group">
@@ -146,11 +168,16 @@
       </button>
     </section>
 
-    <!-- Step 5: Result -->
+    <!-- Step 4: Result -->
     <section class="card" id="output" hidden>
       <h2 class="card-title">Result</h2>
+      <!-- Difficulty badge -->
+      <div class="difficulty-bar" id="difficultyBar"></div>
       <div class="output-toolbar">
         <button class="btn btn-primary" id="downloadBtn">⬇ Download PNG</button>
+        <button class="btn btn-primary" id="downloadPdfBtn">⬇ Download PDF</button>
+        <button class="btn btn-ghost" id="downloadLegendBtn">🏷️ Legend Card</button>
+        <button class="btn btn-ghost" id="downloadPaintListBtn">📋 Paint List</button>
         <button class="btn btn-accent" id="previewAnimBtn">▶ Preview Paint</button>
         <button class="btn btn-ghost" id="zoomInBtn">＋ Zoom In</button>
         <button class="btn btn-ghost" id="zoomOutBtn">－ Zoom Out</button>
@@ -160,10 +187,28 @@
           <span>Outline only (printable)</span>
         </label>
       </div>
+      <!-- Before/After comparison -->
+      <div class="compare-wrap" id="compareWrap" hidden>
+        <canvas id="compareCanvas"></canvas>
+        <div class="compare-slider" id="compareSlider"></div>
+        <div class="compare-label compare-label-left">Original</div>
+        <div class="compare-label compare-label-right">Paint by Number</div>
+      </div>
+      <div class="compare-toggle">
+        <button class="btn btn-ghost btn-sm" id="toggleCompare">👁️ Before / After</button>
+      </div>
       <div class="result-viewport" id="resultViewport">
         <canvas id="resultCanvas"></canvas>
       </div>
       <div id="legend" class="legend"></div>
+      <!-- Paint coverage table -->
+      <div id="coverageTable" class="coverage-table"></div>
+    </section>
+
+    <!-- Order Summary -->
+    <section class="card" id="orderSummary" hidden>
+      <h2 class="card-title">📦 Order Summary</h2>
+      <div id="orderContent"></div>
     </section>
   </div>
 

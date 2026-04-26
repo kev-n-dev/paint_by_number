@@ -21,6 +21,8 @@
   const removeBtn = $('removeBtn');
   const detailLevel = $('detailLevel');
   const detailVal = $('detailVal');
+  const detailAuto = $('detailAuto');
+  const pageSizeEl = $('pageSize');
   const sharpness = $('sharpness');
   const sharpnessVal = $('sharpnessVal');
   const structure = $('structure');
@@ -51,6 +53,19 @@
   const deletePaletteBtn = $('deletePaletteBtn');
   const loadPresetBtn = $('loadPresetBtn');
   const allowMixing = $('allowMixing');
+  const minRegionSize = $('minRegionSize');
+  const minRegionVal = $('minRegionVal');
+  const difficultyBar = $('difficultyBar');
+  const coverageTable = $('coverageTable');
+  const downloadPdfBtn = $('downloadPdfBtn');
+  const downloadLegendBtn = $('downloadLegendBtn');
+  const downloadPaintListBtn = $('downloadPaintListBtn');
+  const toggleCompare = $('toggleCompare');
+  const compareWrap = $('compareWrap');
+  const compareCanvas = $('compareCanvas');
+  const compareSlider = $('compareSlider');
+  const orderSummary = $('orderSummary');
+  const orderContent = $('orderContent');
 
   let loadedImage = null;
   let dragging = false;
@@ -59,7 +74,7 @@
   let renderData = null;
   let animId = null;
   let lastCrop = null;
-  let currentStyle = 'realistic';
+  let currentStyle = 'none';
   let styledImage = null; // canvas with style applied
   const outlineOnly = $('outlineOnly');
 
@@ -262,9 +277,43 @@
 
   refreshPaletteUI();
 
+  // --- Page size to detail mapping ---
+  // Each page size maps to optimal detail (max dimension in px) that ensures
+  // readable numbers when printed. Based on ~150 DPI with min 8pt numbers.
+  const PAGE_DETAIL = {
+    custom: null,
+    '4x6': 400,
+    '5x7': 500,
+    a5: 500,
+    letter: 700,
+    a4: 750,
+    a3: 1000,
+    a2: 1400,
+  };
+
+  let autoDetail = true;
+
+  pageSizeEl.addEventListener('change', () => {
+    const detail = PAGE_DETAIL[pageSizeEl.value];
+    if (detail) {
+      autoDetail = true;
+      detailLevel.value = detail;
+      detailVal.textContent = detail + 'px';
+      detailAuto.textContent = '(auto)';
+      detailAuto.hidden = false;
+    } else {
+      autoDetail = false;
+      detailAuto.hidden = true;
+    }
+  });
+
   // --- Upload / drag-drop ---
   colorCount.addEventListener('input', () => { colorCountVal.textContent = colorCount.value; });
-  detailLevel.addEventListener('input', () => { detailVal.textContent = detailLevel.value + 'px'; });
+  detailLevel.addEventListener('input', () => {
+    detailVal.textContent = detailLevel.value + 'px';
+    autoDetail = false;
+    detailAuto.textContent = '(manual)';
+  });
   sharpness.addEventListener('input', () => {
     sharpnessVal.textContent = sharpness.value + '%';
     updateStylePreview();
@@ -290,6 +339,7 @@
     updateStylePreview();
   });
   cartoonOutlines.addEventListener('change', () => { updateStylePreview(); });
+  minRegionSize.addEventListener('input', () => { minRegionVal.textContent = minRegionSize.value + 'px'; });
 
   function updateStylePreview() {
     if (!loadedImage) return;
@@ -399,12 +449,14 @@
   function applyStyleFilter(imgData, style, w, h) {
     const d = imgData.data;
     switch (style) {
+      case 'none': break; // raw image, no style filter
       case 'realistic': break; // sharpness/structure sliders handle it
       case 'watercolor': filterWatercolor(d, w, h); break;
       case 'cartoon': filterCartoon(d, w, h); break;
       case 'posterize': filterPosterize(d, w, h); break;
       case 'softpastel': filterSoftPastel(d, w, h); break;
       case 'oilpaint': filterOilPaint(d, w, h); break;
+      case 'oilpaint2': filterOilPaint2(d, w, h); break;
     }
     // Always apply sharpness and structure from sliders
     const sharpAmt = parseInt(sharpness.value) / 100;
@@ -581,9 +633,8 @@
   }
 
   function filterOilPaint(d, w, h) {
-    // Strong edge-preserving smooth for thick paint look
-    edgePreservingSmooth(d, w, h, 5, 30);
-    edgePreservingSmooth(d, w, h, 3, 20);
+    // Edge-preserving smooth for paint look — smaller radius keeps detail
+    edgePreservingSmooth(d, w, h, 3, 25);
     // Rich saturation + contrast for bold oil paint colors
     for (let i = 0; i < d.length; i += 4) {
       const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
@@ -597,6 +648,63 @@
   }
 
   function clamp(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+
+  // Oil Paint 2: intensity-binning algorithm
+  // Groups neighboring pixels by intensity level, then assigns each pixel
+  // the average color of the most common intensity bin in its neighborhood.
+  // Based on the algorithm described at:
+  // https://stackoverflow.com/questions/24222556
+  // Content was rephrased for compliance with licensing restrictions.
+  function filterOilPaint2(d, w, h) {
+    const radius = 2;
+    const intensityLevels = 60;
+    const src = new Uint8ClampedArray(d);
+
+    // Pre-compute intensity LUT
+    const intensityLUT = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const pi = i * 4;
+      const avg = (src[pi] + src[pi+1] + src[pi+2]) / 3;
+      intensityLUT[i] = Math.round((avg * intensityLevels) / 255);
+    }
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        // Count intensity bins in neighborhood
+        const binCount = new Int32Array(intensityLevels + 1);
+        const binR = new Float64Array(intensityLevels + 1);
+        const binG = new Float64Array(intensityLevels + 1);
+        const binB = new Float64Array(intensityLevels + 1);
+
+        for (let yy = -radius; yy <= radius; yy++) {
+          const ny = y + yy;
+          if (ny < 0 || ny >= h) continue;
+          for (let xx = -radius; xx <= radius; xx++) {
+            const nx = x + xx;
+            if (nx < 0 || nx >= w) continue;
+            const ni = ny * w + nx;
+            const il = intensityLUT[ni];
+            const npi = ni * 4;
+            binCount[il]++;
+            binR[il] += src[npi];
+            binG[il] += src[npi+1];
+            binB[il] += src[npi+2];
+          }
+        }
+
+        // Find most common intensity bin
+        let maxBin = 0, maxCount = 0;
+        for (let b = 0; b <= intensityLevels; b++) {
+          if (binCount[b] > maxCount) { maxCount = binCount[b]; maxBin = b; }
+        }
+
+        const pi = (y * w + x) * 4;
+        d[pi]   = Math.round(binR[maxBin] / maxCount);
+        d[pi+1] = Math.round(binG[maxBin] / maxCount);
+        d[pi+2] = Math.round(binB[maxBin] / maxCount);
+      }
+    }
+  }
 
   // Edge-preserving smooth: averages only neighbors within a color threshold.
   // Flattens smooth areas into uniform regions while keeping edges sharp.
@@ -821,8 +929,9 @@
       regionId++;
     }
 
-    // Merge only very tiny regions (speckle noise)
-    mergeSmallRegions(regionMap, regionColors, mapped, w, h, regionId, 25);
+    // Merge small regions based on user setting
+    const minReg = parseInt(minRegionSize.value);
+    mergeSmallRegions(regionMap, regionColors, mapped, w, h, regionId, minReg);
 
     // Smooth jagged boundaries: pixels on region edges adopt the majority
     // region of their 5x5 neighborhood. This rounds off staircase edges
@@ -882,6 +991,64 @@
     }
     output.hidden = false;
     requestAnimationFrame(resetView);
+
+    // --- Compute coverage data ---
+    const totalPixels = w * h;
+    const colorCoverage = {};
+    for (let i = 0; i < totalPixels; i++) {
+      const ci = mapped[i];
+      colorCoverage[ci] = (colorCoverage[ci] || 0) + 1;
+    }
+    // Count active regions (non-zero size after merge)
+    const activeRegionSizes = [];
+    const regionSizeMap = new Int32Array(regionId);
+    for (let i = 0; i < totalPixels; i++) regionSizeMap[regionMap[i]]++;
+    for (let r = 0; r < regionId; r++) if (regionSizeMap[r] > 0) activeRegionSizes.push(regionSizeMap[r]);
+    const totalRegions = activeRegionSizes.length;
+    const avgRegionSize = totalRegions > 0 ? totalPixels / totalRegions : 0;
+
+    // Difficulty rating
+    let difficulty, diffClass;
+    if (totalRegions < 50 && paletteNumbers.size <= 8) { difficulty = 'Easy'; diffClass = 'difficulty-easy'; }
+    else if (totalRegions < 150 || paletteNumbers.size <= 16) { difficulty = 'Medium'; diffClass = 'difficulty-medium'; }
+    else { difficulty = 'Hard'; diffClass = 'difficulty-hard'; }
+    const estMinutes = Math.round(totalRegions * 0.8 + paletteNumbers.size * 3);
+    const estTime = estMinutes < 60 ? `${estMinutes} min` : `${Math.floor(estMinutes/60)}h ${estMinutes%60}m`;
+
+    difficultyBar.innerHTML = `<span class="difficulty-badge ${diffClass}">${difficulty}</span>` +
+      `<span class="difficulty-stats">${totalRegions} regions · ${paletteNumbers.size} colors · Est. ${estTime}</span>`;
+
+    // Coverage table
+    const coverageRows = [];
+    for (const [ci, n] of paletteNumbers) {
+      const c = palette[ci], hex = rgbToHex(c);
+      const count = colorCoverage[ci] || 0;
+      const pct = ((count / totalPixels) * 100).toFixed(1);
+      let label = hex;
+      if (paletteLabels && paletteLabels[ci]) label = paletteLabels[ci].name;
+      const size = pct > 15 ? 'Large' : pct > 5 ? 'Medium' : 'Small';
+      coverageRows.push({ n, hex, label, pct, size, c });
+    }
+    coverageRows.sort((a, b) => parseFloat(b.pct) - parseFloat(a.pct));
+
+    coverageTable.innerHTML = '<table><thead><tr><th>#</th><th>Color</th><th>Coverage</th><th>Amount</th></tr></thead><tbody>' +
+      coverageRows.map(r => `<tr>
+        <td>${r.n}</td>
+        <td><span class="coverage-swatch" style="background:${r.hex}"></span> ${r.label}</td>
+        <td><div class="coverage-bar"><div class="coverage-fill" style="width:${r.pct}%;background:${r.hex}"></div></div> ${r.pct}%</td>
+        <td>${r.size}</td>
+      </tr>`).join('') + '</tbody></table>';
+
+    // Store extra data for exports
+    renderData.coverageRows = coverageRows;
+    renderData.difficulty = difficulty;
+    renderData.estTime = estTime;
+    renderData.totalRegions = totalRegions;
+    renderData.pageSize = pageSizeEl.value;
+
+    // Show order summary
+    buildOrderSummary();
+
     output.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -938,12 +1105,237 @@
         ctx.fillText(lb.text, lb.x * s + s/2, lb.y * s + s/2);
       }
     }
+    // Add watermark to tinted preview (not outline mode)
+    if (!outlineMode) addWatermark(ctx, ow, oh);
+  }
+
+  // Render with full colors and outlines but no numbers (for after animation)
+  function renderCanvasNoNumbers() {
+    if (!renderData) return;
+    const { w, h, mapped, palette, regionMap, upscale } = renderData;
+    const s = upscale || 1;
+    const ow = w * s, oh = h * s;
+
+    resultCanvas.width = ow; resultCanvas.height = oh;
+    const ctx = resultCanvas.getContext('2d');
+
+    const outData = ctx.createImageData(ow, oh);
+    for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+      const sx = Math.floor(x / s), sy = Math.floor(y / s);
+      const c = palette[mapped[sy * w + sx]];
+      const pi = (y * ow + x) * 4;
+      outData.data[pi] = c[0]; outData.data[pi+1] = c[1]; outData.data[pi+2] = c[2]; outData.data[pi+3] = 255;
+    }
+    ctx.putImageData(outData, 0, 0);
+
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = Math.max(0.7, s * 0.4);
+    ctx.beginPath();
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const idx = y * w + x, rid = regionMap[idx];
+      if (x < w - 1 && regionMap[idx + 1] !== rid) { ctx.moveTo((x+1)*s, y*s); ctx.lineTo((x+1)*s, (y+1)*s); }
+      if (y < h - 1 && regionMap[idx + w] !== rid) { ctx.moveTo(x*s, (y+1)*s); ctx.lineTo((x+1)*s, (y+1)*s); }
+    }
+    ctx.stroke();
   }
 
   outlineOnly.addEventListener('change', () => {
     stopAnim();
     renderCanvas(outlineOnly.checked);
   });
+
+  outlineOnly.addEventListener('change', () => {
+    stopAnim();
+    renderCanvas(outlineOnly.checked);
+  });
+
+  // --- Paint List Export ---
+  downloadPaintListBtn.addEventListener('click', () => {
+    if (!renderData || !renderData.coverageRows) return;
+    const rows = renderData.coverageRows;
+    const page = renderData.pageSize || 'custom';
+    let text = 'PAINT LIST - Paint by Number\n';
+    text += '================================\n';
+    text += 'Page Size: ' + page.toUpperCase() + '\n';
+    text += 'Difficulty: ' + renderData.difficulty + '\n';
+    text += 'Est. Time: ' + renderData.estTime + '\n';
+    text += '================================\n\n';
+    text += '#   Color                          Hex       Coverage  Amount\n';
+    text += '--- ------------------------------ --------- --------- ------\n';
+    for (const r of rows) {
+      text += String(r.n).padEnd(4) + r.label.padEnd(31) + r.hex.padEnd(10) + (r.pct + '%').padEnd(10) + r.size + '\n';
+    }
+    text += '\nTotal colors: ' + rows.length + '\n';
+    const blob = new Blob([text], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.download = 'paint-list.txt';
+    a.href = URL.createObjectURL(blob);
+    a.click();
+  });
+
+  // --- Legend Card Export ---
+  downloadLegendBtn.addEventListener('click', () => {
+    if (!renderData || !renderData.coverageRows) return;
+    const rows = renderData.coverageRows;
+    const cardW = 600, rowH = 32, pad = 20, headerH = 50;
+    const cardH = headerH + rows.length * rowH + pad * 2;
+    const c = document.createElement('canvas');
+    c.width = cardW; c.height = cardH;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cardW, cardH);
+    ctx.fillStyle = '#222'; ctx.font = 'bold 18px Inter,system-ui';
+    ctx.fillText('Color Legend', pad, pad + 20);
+    ctx.font = '12px Inter,system-ui'; ctx.fillStyle = '#888';
+    ctx.fillText(renderData.difficulty + ' · ' + rows.length + ' colors', pad, pad + 38);
+    let y = headerH + pad;
+    for (const r of rows) {
+      ctx.fillStyle = r.hex;
+      ctx.fillRect(pad, y + 2, 24, 24);
+      ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1; ctx.strokeRect(pad, y + 2, 24, 24);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Inter,system-ui';
+      ctx.textAlign = 'center'; ctx.fillText(String(r.n), pad + 12, y + 18);
+      ctx.textAlign = 'left'; ctx.fillStyle = '#222'; ctx.font = '13px Inter,system-ui';
+      ctx.fillText(r.label, pad + 34, y + 18);
+      ctx.fillStyle = '#888'; ctx.font = '12px Inter,system-ui';
+      ctx.fillText(r.pct + '% · ' + r.size, pad + 340, y + 18);
+      y += rowH;
+    }
+    const a = document.createElement('a');
+    a.download = 'legend-card.png';
+    a.href = c.toDataURL('image/png');
+    a.click();
+  });
+
+  // --- PDF Export with crop marks ---
+  downloadPdfBtn.addEventListener('click', () => {
+    if (!renderData) return;
+    // Render outline-only for print
+    renderCanvas(true);
+    const imgDataUrl = resultCanvas.toDataURL('image/png');
+    const cw = resultCanvas.width, ch = resultCanvas.height;
+    // Build a simple PDF manually (no library needed for basic structure)
+    // We'll open a print-friendly window instead for reliable PDF
+    const win = window.open('', '_blank');
+    if (!win) return;
+    const pageLabel = pageSizeEl.options[pageSizeEl.selectedIndex].text;
+    win.document.write('<!DOCTYPE html><html><head><title>Paint by Number - Print</title>');
+    win.document.write('<style>@page{margin:0.5in}body{margin:0;font-family:Inter,system-ui,sans-serif}');
+    win.document.write('.crop-mark{position:absolute;width:20px;height:1px;background:#000}');
+    win.document.write('.crop-mark-v{width:1px;height:20px}');
+    win.document.write('img{max-width:100%;height:auto;display:block;margin:0 auto}');
+    win.document.write('.legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;justify-content:center}');
+    win.document.write('.li{display:flex;align-items:center;gap:4px;font-size:10px}');
+    win.document.write('.sw{width:16px;height:16px;border-radius:3px;border:1px solid #999;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;text-shadow:0 0 2px #000}');
+    win.document.write('.info{text-align:center;font-size:11px;color:#666;margin-top:8px}');
+    win.document.write('</style></head><body>');
+    win.document.write('<img src="' + imgDataUrl + '">');
+    win.document.write('<div class="legend">');
+    for (const r of renderData.coverageRows) {
+      win.document.write('<div class="li"><span class="sw" style="background:' + r.hex + '">' + r.n + '</span>' + r.label + '</div>');
+    }
+    win.document.write('</div>');
+    win.document.write('<div class="info">' + pageLabel + ' · ' + renderData.difficulty + ' · ' + renderData.coverageRows.length + ' colors · Est. ' + renderData.estTime + '</div>');
+    win.document.write('</body></html>');
+    win.document.close();
+    setTimeout(() => win.print(), 500);
+    // Restore current view
+    renderCanvas(outlineOnly.checked);
+  });
+
+  // --- Before/After Comparison ---
+  toggleCompare.addEventListener('click', () => {
+    if (!renderData || !styledImage) return;
+    const showing = !compareWrap.hidden;
+    compareWrap.hidden = showing;
+    if (showing) return;
+    const { w, h, upscale } = renderData;
+    const s = upscale || 1;
+    const ow = w * s, oh = h * s;
+    compareCanvas.width = ow; compareCanvas.height = oh;
+    drawComparison(0.5);
+  });
+
+  function drawComparison(splitPct) {
+    if (!renderData || !styledImage) return;
+    const { w, h, mapped, palette, regionMap, upscale } = renderData;
+    const s = upscale || 1;
+    const ow = w * s, oh = h * s;
+    const ctx = compareCanvas.getContext('2d');
+    const splitX = Math.round(ow * splitPct);
+    // Left side: styled original
+    ctx.drawImage(styledImage, 0, 0, ow, oh);
+    // Right side: paint-by-number result
+    // Render PBN to offscreen canvas
+    const offscreen = document.createElement('canvas');
+    offscreen.width = ow; offscreen.height = oh;
+    const oCtx = offscreen.getContext('2d');
+    const outData = oCtx.createImageData(ow, oh);
+    for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+      const sx = Math.floor(x / s), sy = Math.floor(y / s);
+      const c = palette[mapped[sy * w + sx]];
+      const pi = (y * ow + x) * 4;
+      outData.data[pi] = c[0]; outData.data[pi+1] = c[1]; outData.data[pi+2] = c[2]; outData.data[pi+3] = 255;
+    }
+    oCtx.putImageData(outData, 0, 0);
+    // Draw right portion
+    ctx.drawImage(offscreen, splitX, 0, ow - splitX, oh, splitX, 0, ow - splitX, oh);
+    // Slider line
+    compareSlider.style.left = splitX + 'px';
+  }
+
+  let compareDragging = false;
+  compareWrap.addEventListener('mousedown', () => { compareDragging = true; });
+  window.addEventListener('mousemove', (e) => {
+    if (!compareDragging) return;
+    const r = compareWrap.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    drawComparison(pct);
+  });
+  window.addEventListener('mouseup', () => { compareDragging = false; });
+  compareWrap.addEventListener('touchstart', () => { compareDragging = true; }, { passive: true });
+  compareWrap.addEventListener('touchmove', (e) => {
+    if (!compareDragging) return;
+    const r = compareWrap.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.touches[0].clientX - r.left) / r.width));
+    drawComparison(pct);
+  }, { passive: true });
+  compareWrap.addEventListener('touchend', () => { compareDragging = false; });
+
+  // --- Watermark on preview canvas ---
+  function addWatermark(ctx, w, h) {
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold ' + Math.max(20, Math.round(Math.min(w, h) / 8)) + 'px Inter,system-ui';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(-Math.PI / 6);
+    ctx.fillText('PREVIEW', 0, 0);
+    ctx.restore();
+  }
+
+  // --- Order Summary ---
+  function buildOrderSummary() {
+    if (!renderData) return;
+    const rd = renderData;
+    const pageLabel = pageSizeEl.options[pageSizeEl.selectedIndex].text;
+    orderContent.innerHTML = `
+      <div class="order-grid">
+        <span class="order-label">Canvas Size</span><span>${pageLabel}</span>
+        <span class="order-label">Difficulty</span><span>${rd.difficulty}</span>
+        <span class="order-label">Colors</span><span>${rd.coverageRows.length}</span>
+        <span class="order-label">Regions</span><span>${rd.totalRegions}</span>
+        <span class="order-label">Est. Painting Time</span><span>${rd.estTime}</span>
+        <span class="order-label">Style</span><span>${currentStyle}</span>
+      </div>
+      <h3 style="margin:0.75rem 0 0.4rem;font-size:0.9rem">Paint Kit Contents</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+        <tr><th style="text-align:left;padding:0.3rem 0.5rem;border-bottom:1px solid #e2e4e9">#</th><th style="text-align:left;padding:0.3rem 0.5rem;border-bottom:1px solid #e2e4e9">Color</th><th style="text-align:left;padding:0.3rem 0.5rem;border-bottom:1px solid #e2e4e9">Pot Size</th></tr>
+        ${rd.coverageRows.map(r => `<tr><td style="padding:0.3rem 0.5rem">${r.n}</td><td style="padding:0.3rem 0.5rem"><span class="coverage-swatch" style="background:${r.hex}"></span> ${r.label}</td><td style="padding:0.3rem 0.5rem">${r.size}</td></tr>`).join('')}
+      </table>
+    `;
+    orderSummary.hidden = false;
+  }
 
   // --- Animated Preview ---
   function stopAnim() {
@@ -1020,6 +1412,8 @@
       } else {
         animId = null;
         previewAnimBtn.textContent = '▶ Preview Paint';
+        // Final clean render: full color, outlines, no numbers
+        renderCanvasNoNumbers();
       }
     }
 
