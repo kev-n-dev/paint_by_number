@@ -10,83 +10,47 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
-    <header class="header">
-      <h1>🎨 Paint by Number</h1>
-      <p class="subtitle">Upload an image, choose a style, and generate a printable paint-by-number sheet.</p>
-    </header>
+  <div class="app-shell">
 
-    <!-- Step 1: Upload -->
-    <section class="card">
-      <div class="upload-area" id="dropZone">
-        <input type="file" id="imageInput" accept="image/*" hidden>
-        <div class="upload-placeholder" id="uploadPlaceholder">
-          <span class="upload-icon">📁</span>
-          <span>Drop an image here or <label class="upload-link" for="imageInput">browse</label></span>
-        </div>
-        <div class="upload-preview" id="uploadPreview" hidden>
-          <img id="previewImg" alt="Preview">
-          <button class="remove-btn" id="removeBtn" aria-label="Remove image">✕</button>
-        </div>
+    <!-- ── Left panel: always-visible settings ── -->
+    <aside class="settings-panel">
+      <div class="panel-header">
+        <h1>🎨 Paint by Number</h1>
       </div>
-    </section>
 
-    <!-- Step 2: Style -->
-    <section class="card" id="styleSection" hidden>
-      <h2 class="card-title">Choose a Style</h2>
-      <div class="style-grid" id="styleGrid">
-        <button class="style-card active" data-style="none"><span class="style-icon">🚫</span><span>No Filter</span></button>
-        <button class="style-card" data-style="realistic"><span class="style-icon">📷</span><span>Realistic</span></button>
-        <button class="style-card" data-style="watercolor"><span class="style-icon">💧</span><span>Watercolor</span></button>
-        <button class="style-card" data-style="cartoon"><span class="style-icon">✏️</span><span>Cartoon</span></button>
-        <button class="style-card" data-style="posterize"><span class="style-icon">🎭</span><span>Pop Art</span></button>
-        <button class="style-card" data-style="softpastel"><span class="style-icon">🌸</span><span>Soft Pastel</span></button>
-        <button class="style-card" data-style="oilpaint"><span class="style-icon">🖌️</span><span>Oil Paint</span></button>
-        <button class="style-card" data-style="oilpaint2"><span class="style-icon">🎨</span><span>Oil Paint 2</span></button>
-      </div>
-      <div class="style-preview-wrap">
-        <canvas id="stylePreviewCanvas"></canvas>
-      </div>
-    </section>
-
-    <!-- Step 3: Settings -->
-    <section class="card" id="controlsSection" hidden>
-      <h2 class="card-title">Settings</h2>
-      <div class="controls-row">
-        <div class="control-group">
-          <label for="pageSize">Print Size</label>
-          <select id="pageSize" class="select-input">
-            <option value="custom">Custom</option>
-            <option value="4x6">4×6 Photo</option>
-            <option value="5x7">5×7 Photo</option>
-            <option value="a5">A5 (148×210mm)</option>
-            <option value="letter" selected>Letter (8.5×11")</option>
-            <option value="a4">A4 (210×297mm)</option>
-            <option value="a3">A3 (297×420mm)</option>
-            <option value="a2">A2 (420×594mm)</option>
-          </select>
-        </div>
-        <div class="control-group">
-          <label for="colorCount">Colors</label>
-          <div class="range-wrap">
-            <input type="range" id="colorCount" min="4" max="32" value="8">
-            <span class="range-val" id="colorCountVal">8</span>
+      <!-- Upload (compact, in panel) -->
+      <div class="panel-section panel-upload">
+        <div class="upload-area-sm" id="dropZone">
+          <input type="file" id="imageInput" accept="image/*" hidden>
+          <div class="upload-placeholder" id="uploadPlaceholder">
+            <span class="upload-icon-sm">📁</span>
+            <label class="upload-link" for="imageInput">Upload image</label>
+          </div>
+          <div class="upload-preview-sm" id="uploadPreview" hidden>
+            <img id="previewImg" alt="Preview">
+            <button class="remove-btn-sm" id="removeBtn" aria-label="Remove image">✕</button>
           </div>
         </div>
-        <div class="control-group">
-          <label for="detailLevel">Detail <span id="detailAuto" class="detail-auto">(auto)</span></label>
-          <div class="range-wrap">
-            <input type="range" id="detailLevel" min="300" max="3000" step="100" value="600">
-            <span class="range-val" id="detailVal">600px</span>
-          </div>
+      </div>
+
+      <!-- Style picker -->
+      <div class="panel-section">
+        <h2 class="panel-section-title">Style</h2>
+        <div class="style-grid" id="styleGrid">
+          <button class="style-card active" data-style="none"><span class="style-icon">🚫</span><span>None</span></button>
+          <button class="style-card" data-style="realistic"><span class="style-icon">📷</span><span>Realistic</span></button>
+          <button class="style-card" data-style="watercolor"><span class="style-icon">💧</span><span>Watercolor</span></button>
+          <button class="style-card" data-style="cartoon"><span class="style-icon">✏️</span><span>Cartoon</span></button>
+          <button class="style-card" data-style="posterize"><span class="style-icon">🎭</span><span>Pop Art</span></button>
+          <button class="style-card" data-style="softpastel"><span class="style-icon">🌸</span><span>Pastel</span></button>
+          <button class="style-card" data-style="oilpaint"><span class="style-icon">🖌️</span><span>Oil Paint</span></button>
+          <button class="style-card" data-style="oilpaint2"><span class="style-icon">🎨</span><span>Oil Paint 2</span></button>
         </div>
-        <div class="control-group">
-          <label for="minRegionSize">Min Region Size</label>
-          <div class="range-wrap">
-            <input type="range" id="minRegionSize" min="10" max="200" step="5" value="25">
-            <span class="range-val" id="minRegionVal">25px</span>
-          </div>
-        </div>
+      </div>
+
+      <!-- Image adjustments -->
+      <div class="panel-section">
+        <h2 class="panel-section-title">Image</h2>
         <div class="control-group">
           <label for="sharpness">Sharpness</label>
           <div class="range-wrap">
@@ -134,7 +98,64 @@
           <span>Cartoon outlines</span>
         </label>
       </div>
-      <div class="palette-section">
+
+      <!-- Paint-by-number settings -->
+      <div class="panel-section">
+        <h2 class="panel-section-title">Canvas</h2>
+        <div class="control-group">
+          <label for="pageSize">Print Size</label>
+          <select id="pageSize" class="select-input">
+            <option value="custom">Custom</option>
+            <option value="4x6">4×6 Photo</option>
+            <option value="5x7">5×7 Photo</option>
+            <option value="a5">A5 (148×210mm)</option>
+            <option value="letter" selected>Letter (8.5×11")</option>
+            <option value="a4">A4 (210×297mm)</option>
+            <option value="a3">A3 (297×420mm)</option>
+            <option value="a2">A2 (420×594mm)</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label>Canvas Dimensions (cm)</label>
+          <div class="dim-row">
+            <input type="number" id="canvasW" class="dim-input" value="21" min="1" max="200" placeholder="W">
+            <span class="dim-sep">×</span>
+            <input type="number" id="canvasH" class="dim-input" value="29.7" min="1" max="200" placeholder="H">
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="colorCount">Colors</label>
+          <div class="range-wrap">
+            <input type="range" id="colorCount" min="4" max="32" value="8">
+            <span class="range-val" id="colorCountVal">8</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="detailLevel">Detail <span id="detailAuto" class="detail-auto">(auto)</span></label>
+          <div class="range-wrap">
+            <input type="range" id="detailLevel" min="300" max="3000" step="100" value="600">
+            <span class="range-val" id="detailVal">600px</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="minRegionSize">Min Region Size</label>
+          <div class="range-wrap">
+            <input type="range" id="minRegionSize" min="10" max="200" step="5" value="25">
+            <span class="range-val" id="minRegionVal">25px</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="smoothness">Line Smoothness</label>
+          <div class="range-wrap">
+            <input type="range" id="smoothness" min="0" max="5" step="1" value="2">
+            <span class="range-val" id="smoothnessVal">2</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Palette -->
+      <div class="panel-section">
+        <h2 class="panel-section-title">Palette</h2>
         <label class="toggle-label">
           <input type="checkbox" id="useCustomPalette">
           <span>Use my paints</span>
@@ -144,8 +165,8 @@
             <select id="paletteSelect" aria-label="Select palette"></select>
             <button class="btn btn-ghost btn-sm" id="newPaletteBtn">＋ New</button>
             <button class="btn btn-ghost btn-sm" id="loadPresetBtn">📦 Presets</button>
-            <button class="btn btn-ghost btn-sm" id="renamePaletteBtn">✎ Rename</button>
-            <button class="btn btn-ghost btn-sm btn-danger-text" id="deletePaletteBtn">🗑 Delete</button>
+            <button class="btn btn-ghost btn-sm" id="renamePaletteBtn">✎</button>
+            <button class="btn btn-ghost btn-sm btn-danger-text" id="deletePaletteBtn">🗑</button>
           </div>
           <div class="palette-add-row">
             <input type="color" id="paintColorPicker" value="#e63946">
@@ -155,63 +176,79 @@
           <div class="paint-chips" id="paintChips"></div>
           <label class="toggle-label">
             <input type="checkbox" id="allowMixing">
-            <span>Allow color mixing (more detail)</span>
+            <span>Allow color mixing</span>
           </label>
-          <p class="palette-hint" id="paletteHint">Add at least 2 colors from your paint set.</p>
+          <p class="palette-hint" id="paletteHint">Add at least 2 colors.</p>
         </div>
       </div>
+
+      <!-- Apply button -->
       <button class="btn btn-primary btn-generate" id="generateBtn" disabled>
-        <span id="generateText">🎨 Generate</span>
+        <span id="generateText">🎨 Apply</span>
         <span id="generateSpinner" class="spinner" hidden>
           <span class="spinner-brush">🖌️</span>
         </span>
       </button>
-    </section>
+    </aside>
 
-    <!-- Step 4: Result -->
-    <section class="card" id="output" hidden>
-      <h2 class="card-title">Result</h2>
-      <!-- Difficulty badge -->
-      <div class="difficulty-bar" id="difficultyBar"></div>
-      <div class="output-toolbar">
-        <button class="btn btn-primary" id="downloadBtn">⬇ Download PNG</button>
-        <button class="btn btn-primary" id="downloadPdfBtn">⬇ Download PDF</button>
-        <button class="btn btn-ghost" id="downloadLegendBtn">🏷️ Legend Card</button>
-        <button class="btn btn-ghost" id="downloadPaintListBtn">📋 Paint List</button>
-        <button class="btn btn-accent" id="previewAnimBtn">▶ Preview Paint</button>
-        <button class="btn btn-ghost" id="zoomInBtn">＋ Zoom In</button>
-        <button class="btn btn-ghost" id="zoomOutBtn">－ Zoom Out</button>
-        <button class="btn btn-ghost" id="zoomResetBtn">Reset View</button>
-        <label class="toggle-label">
-          <input type="checkbox" id="outlineOnly">
-          <span>Outline only (printable)</span>
-        </label>
-      </div>
-      <!-- Before/After comparison -->
-      <div class="compare-wrap" id="compareWrap" hidden>
-        <canvas id="compareCanvas"></canvas>
-        <div class="compare-slider" id="compareSlider"></div>
-        <div class="compare-label compare-label-left">Original</div>
-        <div class="compare-label compare-label-right">Paint by Number</div>
-      </div>
-      <div class="compare-toggle">
-        <button class="btn btn-ghost btn-sm" id="toggleCompare">👁️ Before / After</button>
-      </div>
-      <div class="result-viewport" id="resultViewport">
-        <canvas id="resultCanvas"></canvas>
-      </div>
-      <div id="legend" class="legend"></div>
-      <!-- Paint coverage table -->
-      <div id="coverageTable" class="coverage-table"></div>
-    </section>
+    <!-- ── Right panel: canvas area + info sidebar ── -->
+    <main class="main-panel">
 
-    <!-- Order Summary -->
-    <section class="card" id="orderSummary" hidden>
-      <h2 class="card-title">📦 Order Summary</h2>
-      <div id="orderContent"></div>
-    </section>
+      <!-- Canvas column -->
+      <div class="canvas-col">
+
+        <!-- Style preview (shown after upload) -->
+        <section class="card upload-card" id="stylePreviewCard" hidden>
+          <div class="style-preview-wrap" id="stylePreviewSection">
+            <canvas id="stylePreviewCanvas"></canvas>
+          </div>
+        </section>
+
+        <!-- Result -->
+        <section class="card result-card" id="output" hidden>
+          <div class="difficulty-bar" id="difficultyBar"></div>
+          <div class="output-toolbar">
+            <button class="btn btn-primary" id="downloadBtn">⬇ PNG</button>
+            <button class="btn btn-primary" id="downloadPdfBtn">⬇ PDF</button>
+            <button class="btn btn-ghost" id="downloadLegendBtn">🏷️ Legend</button>
+            <button class="btn btn-ghost" id="downloadPaintListBtn">📋 Paint List</button>
+            <button class="btn btn-accent" id="previewAnimBtn">▶ Preview</button>
+            <button class="btn btn-ghost" id="zoomInBtn">＋</button>
+            <button class="btn btn-ghost" id="zoomOutBtn">－</button>
+            <button class="btn btn-ghost" id="zoomResetBtn">Fit</button>
+            <label class="toggle-label">
+              <input type="checkbox" id="outlineOnly">
+              <span>Outline only</span>
+            </label>
+          </div>
+          <div class="compare-wrap" id="compareWrap" hidden>
+            <canvas id="compareCanvas"></canvas>
+            <div class="compare-slider" id="compareSlider"></div>
+            <div class="compare-label compare-label-left">Original</div>
+            <div class="compare-label compare-label-right">Paint by Number</div>
+          </div>
+          <div class="compare-toggle">
+            <button class="btn btn-ghost btn-sm" id="toggleCompare">👁️ Before / After</button>
+          </div>
+          <div class="result-viewport" id="resultViewport">
+            <canvas id="resultCanvas"></canvas>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- Info sidebar: legend, coverage, order -->
+      <aside class="info-aside card" id="infoAside" hidden>
+        <div id="legend" class="legend legend-aside"></div>
+        <div id="coverageTable" class="coverage-table"></div>
+        <div id="orderSummary" hidden>
+          <h3 class="aside-title">📦 Order Summary</h3>
+          <div id="orderContent"></div>
+        </div>
+      </aside>
+
+    </main>
   </div>
-
   <canvas id="srcCanvas" hidden></canvas>
   <script src="app.js"></script>
 </body>

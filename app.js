@@ -37,10 +37,9 @@
   const warmthVal = $('warmthVal');
   const cartoonOutlines = $('cartoonOutlines');
   const useCustomPalette = $('useCustomPalette');
-  const styleSection = $('styleSection');
-  const controlsSection = $('controlsSection');
   const styleGrid = $('styleGrid');
   const stylePreviewCanvas = $('stylePreviewCanvas');
+  const stylePreviewCard = $('stylePreviewCard');
   const customPaletteUI = $('customPaletteUI');
   const paintColorPicker = $('paintColorPicker');
   const paintNameInput = $('paintNameInput');
@@ -55,6 +54,10 @@
   const allowMixing = $('allowMixing');
   const minRegionSize = $('minRegionSize');
   const minRegionVal = $('minRegionVal');
+  const smoothnessEl = $('smoothness');
+  const smoothnessVal = $('smoothnessVal');
+  const canvasWEl = $('canvasW');
+  const canvasHEl = $('canvasH');
   const difficultyBar = $('difficultyBar');
   const coverageTable = $('coverageTable');
   const downloadPdfBtn = $('downloadPdfBtn');
@@ -66,6 +69,7 @@
   const compareSlider = $('compareSlider');
   const orderSummary = $('orderSummary');
   const orderContent = $('orderContent');
+  const infoAside = $('infoAside');
 
   let loadedImage = null;
   let dragging = false;
@@ -293,6 +297,12 @@
 
   let autoDetail = true;
 
+  // Page size → canvas dimensions (cm)
+  const PAGE_DIMS_CM = {
+    '4x6': [10.2, 15.2], '5x7': [12.7, 17.8], a5: [14.8, 21],
+    letter: [21.6, 27.9], a4: [21, 29.7], a3: [29.7, 42], a2: [42, 59.4],
+  };
+
   pageSizeEl.addEventListener('change', () => {
     const detail = PAGE_DETAIL[pageSizeEl.value];
     if (detail) {
@@ -305,6 +315,8 @@
       autoDetail = false;
       detailAuto.hidden = true;
     }
+    const dims = PAGE_DIMS_CM[pageSizeEl.value];
+    if (dims) { canvasWEl.value = dims[0]; canvasHEl.value = dims[1]; }
   });
 
   // --- Upload / drag-drop ---
@@ -340,6 +352,7 @@
   });
   cartoonOutlines.addEventListener('change', () => { updateStylePreview(); });
   minRegionSize.addEventListener('input', () => { minRegionVal.textContent = minRegionSize.value + 'px'; });
+  smoothnessEl.addEventListener('input', () => { smoothnessVal.textContent = smoothnessEl.value; });
 
   function updateStylePreview() {
     if (!loadedImage) return;
@@ -351,14 +364,11 @@
     img.onload = () => {
       loadedImage = img;
       output.hidden = true;
-      controlsSection.hidden = true;
       previewImg.src = img.src;
       uploadPlaceholder.hidden = true;
       uploadPreview.hidden = false;
-      // Show style picker
-      styleSection.hidden = false;
+      stylePreviewCard.hidden = false;
       applyStylePreview();
-      styleSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
     img.src = URL.createObjectURL(file);
   }
@@ -379,10 +389,9 @@
     generateBtn.disabled = true;
     uploadPlaceholder.hidden = false;
     uploadPreview.hidden = true;
+    stylePreviewCard.hidden = true;
     imageInput.value = '';
     output.hidden = true;
-    styleSection.hidden = true;
-    controlsSection.hidden = true;
   });
 
   const generateText = $('generateText');
@@ -436,12 +445,10 @@
     const fullData = fCtx.getImageData(0, 0, fullW, fullH);
     applyStyleFilter(fullData, currentStyle, fullW, fullH);
     fCtx.putImageData(fullData, 0, 0);
-    // Convert to an Image
     const sImg = new Image();
     sImg.onload = () => {
       styledImage = sImg;
       generateBtn.disabled = false;
-      controlsSection.hidden = false;
     };
     sImg.src = fullCanvas.toDataURL();
   }
@@ -933,10 +940,9 @@
     const minReg = parseInt(minRegionSize.value);
     mergeSmallRegions(regionMap, regionColors, mapped, w, h, regionId, minReg);
 
-    // Smooth jagged boundaries: pixels on region edges adopt the majority
-    // region of their 5x5 neighborhood. This rounds off staircase edges
-    // without removing small regions entirely.
-    smoothBoundaries(regionMap, mapped, regionColors, w, h);
+    // Smooth boundaries based on slider (0 = none, 5 = very smooth)
+    const smoothPasses = parseInt(smoothnessEl.value);
+    smoothBoundaries(regionMap, mapped, regionColors, w, h, smoothPasses);
 
     const paletteNumbers = new Map();
     let num = 1;
@@ -990,6 +996,7 @@
       legend.appendChild(item);
     }
     output.hidden = false;
+    infoAside.hidden = false;
     requestAnimationFrame(resetView);
 
     // --- Compute coverage data ---
@@ -1045,6 +1052,7 @@
     renderData.estTime = estTime;
     renderData.totalRegions = totalRegions;
     renderData.pageSize = pageSizeEl.value;
+    renderData.customPaintsSnapshot = useCustomPalette.checked ? customPaints.map(p => ({...p})) : null;
 
     // Show order summary
     buildOrderSummary();
@@ -1208,38 +1216,254 @@
 
   // --- PDF Export with crop marks ---
   downloadPdfBtn.addEventListener('click', () => {
-    if (!renderData) return;
-    // Render outline-only for print
-    renderCanvas(true);
-    const imgDataUrl = resultCanvas.toDataURL('image/png');
-    const cw = resultCanvas.width, ch = resultCanvas.height;
-    // Build a simple PDF manually (no library needed for basic structure)
-    // We'll open a print-friendly window instead for reliable PDF
-    const win = window.open('', '_blank');
-    if (!win) return;
+    if (!renderData || !renderData.coverageRows) return;
+
+    const rd = renderData;
     const pageLabel = pageSizeEl.options[pageSizeEl.selectedIndex].text;
-    win.document.write('<!DOCTYPE html><html><head><title>Paint by Number - Print</title>');
-    win.document.write('<style>@page{margin:0.5in}body{margin:0;font-family:Inter,system-ui,sans-serif}');
-    win.document.write('.crop-mark{position:absolute;width:20px;height:1px;background:#000}');
-    win.document.write('.crop-mark-v{width:1px;height:20px}');
-    win.document.write('img{max-width:100%;height:auto;display:block;margin:0 auto}');
-    win.document.write('.legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;justify-content:center}');
-    win.document.write('.li{display:flex;align-items:center;gap:4px;font-size:10px}');
-    win.document.write('.sw{width:16px;height:16px;border-radius:3px;border:1px solid #999;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff;text-shadow:0 0 2px #000}');
-    win.document.write('.info{text-align:center;font-size:11px;color:#666;margin-top:8px}');
-    win.document.write('</style></head><body>');
-    win.document.write('<img src="' + imgDataUrl + '">');
-    win.document.write('<div class="legend">');
-    for (const r of renderData.coverageRows) {
-      win.document.write('<div class="li"><span class="sw" style="background:' + r.hex + '">' + r.n + '</span>' + r.label + '</div>');
-    }
-    win.document.write('</div>');
-    win.document.write('<div class="info">' + pageLabel + ' · ' + renderData.difficulty + ' · ' + renderData.coverageRows.length + ' colors · Est. ' + renderData.estTime + '</div>');
-    win.document.write('</body></html>');
-    win.document.close();
-    setTimeout(() => win.print(), 500);
-    // Restore current view
+
+    // Page 1: outline-only canvas
+    renderCanvas(true);
+    const outlineUrl = resultCanvas.toDataURL('image/png');
+
+    // Page 3: finished colour canvas (no watermark, no numbers)
+    renderCanvasNoNumbers();
+    const colourUrl = resultCanvas.toDataURL('image/png');
+
+    // Restore view
     renderCanvas(outlineOnly.checked);
+
+    // --- Paint quantity calculation ---
+    // Acrylic paint: ~0.12 ml/cm² per coat, density ~1.2 g/ml → ~0.144 g/cm²
+    const canvasW = parseFloat(canvasWEl.value) || 21;
+    const canvasH = parseFloat(canvasHEl.value) || 29.7;
+    const totalAreaCm2 = canvasW * canvasH;
+    const ML_PER_CM2 = 0.12;
+    const DENSITY = 1.2;
+    const WASTE_FACTOR = 1.25;
+
+    // Helper: parse a mix label into [{name, ratio}]
+    function parseMixParts(label) {
+      return label.split('+').map(part => {
+        part = part.trim();
+        const m = part.match(/^(\d+)%\s+(.+)$/);
+        if (m) return { name: m[2].trim(), ratio: parseInt(m[1]) / 100 };
+        return { name: part, ratio: 0.5 }; // equal split if no %
+      });
+    }
+
+    // Build base-paint grams map — distribute mixed color grams back to components
+    const baseGramsMap = {}; // name → grams
+    for (const r of rd.coverageRows) {
+      const areaCm2 = totalAreaCm2 * (parseFloat(r.pct) / 100);
+      const grams = areaCm2 * ML_PER_CM2 * DENSITY * WASTE_FACTOR;
+      if (!r.label.includes('+')) {
+        // Base paint — add directly
+        baseGramsMap[r.label] = (baseGramsMap[r.label] || 0) + grams;
+      } else {
+        // Mixed color — split grams proportionally to components
+        const parts = parseMixParts(r.label);
+        const totalRatio = parts.reduce((s, p) => s + p.ratio, 0);
+        for (const p of parts) {
+          const share = grams * (p.ratio / totalRatio);
+          baseGramsMap[p.name] = (baseGramsMap[p.name] || 0) + share;
+        }
+      }
+    }
+
+    // Build production table rows — ALL base paints including mix-only components
+    // baseGramsMap has every base paint name that's needed
+    const allBasePaints = Object.keys(baseGramsMap).map(name => {
+      // Find hex from customPaintsSnapshot or coverageRows
+      const cp = rd.customPaintsSnapshot && rd.customPaintsSnapshot.find(p => (p.name || p.hex) === name);
+      const row = rd.coverageRows.find(r => !r.label.includes('+') && r.label === name);
+      const hex = cp ? cp.hex : (row ? row.hex : '#ccc');
+      const grams = Math.max(1, Math.ceil(baseGramsMap[name]));
+      const potSize = grams <= 5 ? '5ml' : grams <= 15 ? '15ml' : grams <= 30 ? '30ml' : '60ml+';
+      const n = row ? row.n : '—';
+      return { name, hex, grams, potSize, n };
+    }).sort((a, b) => b.grams - a.grams);
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('Please allow pop-ups to download the PDF.'); return; }
+
+    const css = `
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+      * { margin:0; padding:0; box-sizing:border-box; }
+      body { font-family: Inter, system-ui, sans-serif; background:#fff; color:#1a1d23; }
+      .page { width:100%; padding:0.5in; page-break-after:always; }
+      .page:last-child { page-break-after:auto; }
+      h1 { font-size:20px; font-weight:700; margin-bottom:3px; }
+      .meta { font-size:10px; color:#999; margin-bottom:14px; }
+
+      /* Page 1 */
+      img.canvas-img { max-width:100%; height:auto; display:block; border:1px solid #ddd; border-radius:4px; }
+
+      /* Page 2 layout: legend left, preview right */
+      .page2-layout { display:flex; gap:20px; align-items:flex-start; }
+      .page2-left { flex:1; min-width:0; }
+      .page2-right { width:220px; flex-shrink:0; }
+      .page2-right img { width:100%; height:auto; border-radius:4px; border:1px solid #ddd; }
+      .page2-right p { font-size:9px; color:#999; text-align:center; margin-top:4px; }
+
+      /* Legend — 3 columns to fit more */
+      .legend-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-bottom:12px; }
+      .legend-item { display:flex; align-items:center; gap:5px; }
+      .swatch {
+        width:28px; height:28px; border-radius:4px; flex-shrink:0;
+        border:1px solid rgba(0,0,0,.12);
+        display:flex; align-items:center; justify-content:center;
+        font-weight:700; font-size:10px; color:#fff;
+        text-shadow:0 1px 2px rgba(0,0,0,.5);
+        -webkit-print-color-adjust:exact; print-color-adjust:exact;
+      }
+      .legend-text { font-size:11px; line-height:1.3; }
+      .legend-num { font-weight:700; }
+      .legend-hex { font-size:9px; color:#aaa; font-family:monospace; }
+
+      /* Mixing guide */
+      .mix-title { font-size:13px; font-weight:600; margin:14px 0 8px; border-top:1px solid #eee; padding-top:10px; }
+      .mix-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:5px; }
+      .mix-item { display:flex; align-items:center; gap:6px; font-size:10px; }
+      .mix-parts { display:flex; align-items:center; gap:3px; }
+      .mix-swatch {
+        width:16px; height:16px; border-radius:3px; border:1px solid rgba(0,0,0,.1); flex-shrink:0;
+        -webkit-print-color-adjust:exact; print-color-adjust:exact;
+      }
+      .mix-plus { font-size:10px; color:#aaa; }
+      .mix-arrow { font-size:12px; color:#bbb; margin:0 2px; }
+      .mix-result {
+        width:22px; height:22px; border-radius:3px; border:1px solid rgba(0,0,0,.1); flex-shrink:0;
+        -webkit-print-color-adjust:exact; print-color-adjust:exact;
+      }
+      .mix-label { line-height:1.3; }
+      .mix-name { font-weight:600; }
+      .mix-recipe { font-size:9px; color:#999; }
+
+      @media print {
+        @page { margin:0.5in; }
+        .page { padding:0; }
+        * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+      }
+    `;
+
+    // Build legend rows — just number, name, hex
+    const legendRows = rd.coverageRows.map(r => `
+      <div class="legend-item">
+        <div class="swatch" style="background:${r.hex}">${r.n}</div>
+        <div class="legend-text">
+          <div class="legend-num">${r.label}</div>
+          <div class="legend-hex">${r.hex}</div>
+        </div>
+      </div>`).join('');
+
+    // Build mixing guide — cleaner layout
+    // Helper to find hex for a paint name — checks customPaints first, then coverageRows
+    function findPaintHex(name) {
+      const n = name.toLowerCase().trim();
+      if (rd.customPaintsSnapshot) {
+        const cp = rd.customPaintsSnapshot.find(p => (p.name || p.hex).toLowerCase() === n);
+        if (cp) return cp.hex;
+      }
+      const row = rd.coverageRows.find(b => !b.label.includes('+') && b.label.toLowerCase() === n);
+      return row ? row.hex : '#ccc';
+    }
+
+    const mixRows = rd.coverageRows
+      .filter(r => r.label.includes('+'))
+      .map(r => {
+        const parts = parseMixParts(r.label);
+        const swatches = parts.map(p => {
+          const col = findPaintHex(p.name);
+          const pctLabel = Math.round(p.ratio * 100) + '%';
+          return `<div style="text-align:center">
+            <div class="mix-swatch" style="background:${col}"></div>
+            <div style="font-size:8px;color:#888;margin-top:1px">${pctLabel}</div>
+          </div>`;
+        });
+        return `
+          <div class="mix-item">
+            <div class="mix-parts">${swatches.join('<span class="mix-plus">+</span>')}</div>
+            <span class="mix-arrow">→</span>
+            <div class="mix-result" style="background:${r.hex}"></div>
+            <div class="mix-label">
+              <div class="mix-name">${r.n}. ${parts.map(p => p.name).join(' + ')}</div>
+              <div class="mix-recipe">${r.label}</div>
+            </div>
+          </div>`;
+      }).join('');
+
+    const hasMixes = mixRows.length > 0;
+
+    win.document.write(`<!DOCTYPE html><html><head>
+      <meta charset="UTF-8">
+      <title>Paint by Number – ${pageLabel}</title>
+      <style>${css}</style>
+    </head><body>
+
+    <!-- PAGE 1: Outline -->
+    <div class="page">
+      <img class="canvas-img" src="${outlineUrl}" alt="Paint by Number outline">
+    </div>
+
+    <!-- PAGE 2: Legend + Mixing Guide + Finished Preview -->
+    <div class="page">
+      <h1>Color Guide</h1>
+      <div class="page2-layout">
+        <div class="page2-left">
+          <div class="legend-grid">${legendRows}</div>
+          ${hasMixes ? `<div class="mix-title">Mixing Guide</div><div class="mix-grid">${mixRows}</div>` : ''}
+        </div>
+        <div class="page2-right">
+          <img src="${colourUrl}" alt="Finished preview">
+          <p>Finished preview</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 3: Production / Order Sheet -->
+    <div class="page">
+      <h1>Production Sheet</h1>
+      <p style="font-size:10px;color:#888;margin-bottom:12px">
+        Canvas: ${canvasW} × ${canvasH} cm · ${rd.difficulty} · Est. ${rd.estTime}
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead>
+          <tr style="border-bottom:2px solid #222">
+            <th style="text-align:left;padding:4px 6px">#</th>
+            <th style="text-align:left;padding:4px 6px">Color</th>
+            <th style="text-align:left;padding:4px 6px">Hex</th>
+            <th style="text-align:right;padding:4px 6px">Paint (g)</th>
+            <th style="text-align:right;padding:4px 6px">Pot Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${allBasePaints.map((r, i) => `
+          <tr style="border-bottom:1px solid #eee;background:${i%2===0?'#fafafa':'#fff'}">
+            <td style="padding:4px 6px;font-weight:700">${r.n}</td>
+            <td style="padding:4px 6px">
+              <span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:${r.hex};border:1px solid rgba(0,0,0,.1);vertical-align:middle;margin-right:5px;-webkit-print-color-adjust:exact;print-color-adjust:exact"></span>
+              ${r.name}
+            </td>
+            <td style="padding:4px 6px;font-family:monospace;color:#888;font-size:10px">${r.hex}</td>
+            <td style="padding:4px 6px;text-align:right;font-weight:600">${r.grams}g</td>
+            <td style="padding:4px 6px;text-align:right">${r.potSize}</td>
+          </tr>`).join('')}
+          <tr style="border-top:2px solid #222;font-weight:700">
+            <td colspan="3" style="padding:5px 6px;text-align:right">Total:</td>
+            <td style="padding:5px 6px;text-align:right">${allBasePaints.reduce((s,r)=>s+r.grams,0)}g</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size:9px;color:#bbb;margin-top:8px">
+        Includes paint needed for mixing. Based on 0.12ml/cm² acrylic coverage with 25% waste allowance.
+      </p>
+    </div>
+
+    </body></html>`);
+
+    win.document.close();
+    setTimeout(() => win.print(), 800);
   });
 
   // --- Before/After Comparison ---
@@ -1553,34 +1777,31 @@
   // Smooth jagged region boundaries by reassigning edge pixels to the
   // majority region in a small neighborhood. Preserves region shapes
   // but rounds off staircase/zigzag edges.
-  function smoothBoundaries(regionMap, mapped, regionColors, w, h) {
+  function smoothBoundaries(regionMap, mapped, regionColors, w, h, passes = 2) {
+    if (passes === 0) return;
+    // Scale neighborhood radius with passes: more passes = wider radius = smoother
+    const radius = Math.min(passes, 3);
     const size = w * h;
-    for (let pass = 0; pass < 2; pass++) {
+    for (let pass = 0; pass < passes; pass++) {
       const newMap = new Int32Array(regionMap);
       for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
         const idx = y * w + x;
         const cur = regionMap[idx];
-        // Only process boundary pixels
         if (regionMap[idx-1] === cur && regionMap[idx+1] === cur &&
             regionMap[idx-w] === cur && regionMap[idx+w] === cur) continue;
-        // Count regions in 5x5 neighborhood
         const counts = {};
-        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
           const ny = y+dy, nx = x+dx;
           if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
           const r = regionMap[ny * w + nx];
           counts[r] = (counts[r] || 0) + 1;
         }
-        // Find majority
         let best = cur, bestCnt = 0;
         for (const [r, cnt] of Object.entries(counts)) {
           if (cnt > bestCnt) { bestCnt = cnt; best = parseInt(r); }
         }
-        if (best !== cur) {
-          newMap[idx] = best;
-        }
+        if (best !== cur) newMap[idx] = best;
       }
-      // Apply
       for (let i = 0; i < size; i++) {
         if (newMap[i] !== regionMap[i]) {
           regionMap[i] = newMap[i];
