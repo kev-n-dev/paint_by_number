@@ -45,6 +45,14 @@
           <button class="style-card" data-style="softpastel"><span class="style-icon">🌸</span><span>Pastel</span></button>
           <button class="style-card" data-style="oilpaint"><span class="style-icon">🖌️</span><span>Oil Paint</span></button>
           <button class="style-card" data-style="oilpaint2"><span class="style-icon">🎨</span><span>Oil Paint 2</span></button>
+          <button class="style-card" data-style="posterize2"><span class="style-icon">🟥</span><span>Posterize</span></button>
+        </div>
+        <div class="control-group" id="posterizeLevelsWrap" hidden>
+          <label for="posterizeLevels">Levels</label>
+          <div class="range-wrap">
+            <input type="range" id="posterizeLevels" min="2" max="16" step="1" value="6">
+            <span class="range-val" id="posterizeLevelsVal">6</span>
+          </div>
         </div>
       </div>
 
@@ -52,38 +60,45 @@
       <div class="panel-section">
         <h2 class="panel-section-title">Image</h2>
         <div class="control-group">
+          <label for="simplify">Simplify</label>
+          <div class="range-wrap">
+            <input type="range" id="simplify" min="0" max="10" step="1" value="0">
+            <span class="range-val" id="simplifyVal">Off</span>
+          </div>
+        </div>
+        <div class="control-group">
           <label for="sharpness">Sharpness</label>
           <div class="range-wrap">
-            <input type="range" id="sharpness" min="0" max="200" step="10" value="80">
-            <span class="range-val" id="sharpnessVal">80%</span>
+            <input type="range" id="sharpness" min="0" max="200" step="10" value="60">
+            <span class="range-val" id="sharpnessVal">60%</span>
           </div>
         </div>
         <div class="control-group">
           <label for="structure">Structure</label>
           <div class="range-wrap">
-            <input type="range" id="structure" min="0" max="200" step="10" value="15">
-            <span class="range-val" id="structureVal">15%</span>
+            <input type="range" id="structure" min="0" max="200" step="10" value="20">
+            <span class="range-val" id="structureVal">20%</span>
           </div>
         </div>
         <div class="control-group">
           <label for="brightness">Brightness</label>
           <div class="range-wrap">
-            <input type="range" id="brightness" min="-100" max="100" step="5" value="0">
-            <span class="range-val" id="brightnessVal">0</span>
+            <input type="range" id="brightness" min="-100" max="100" step="5" value="5">
+            <span class="range-val" id="brightnessVal">5</span>
           </div>
         </div>
         <div class="control-group">
           <label for="contrast">Contrast</label>
           <div class="range-wrap">
-            <input type="range" id="contrast" min="-100" max="100" step="5" value="0">
-            <span class="range-val" id="contrastVal">0</span>
+            <input type="range" id="contrast" min="-100" max="100" step="5" value="15">
+            <span class="range-val" id="contrastVal">15</span>
           </div>
         </div>
         <div class="control-group">
           <label for="saturation">Saturation</label>
           <div class="range-wrap">
-            <input type="range" id="saturation" min="-100" max="100" step="5" value="0">
-            <span class="range-val" id="saturationVal">0</span>
+            <input type="range" id="saturation" min="-100" max="100" step="5" value="10">
+            <span class="range-val" id="saturationVal">10</span>
           </div>
         </div>
         <div class="control-group">
@@ -116,6 +131,17 @@
           </select>
         </div>
         <div class="control-group">
+          <label for="printDpi">Print Quality (DPI) <span id="detailAuto" class="detail-auto"></span></label>
+          <select id="printDpi" class="select-input">
+            <option value="96">96 DPI — Screen / Draft</option>
+            <option value="150">150 DPI — Good</option>
+            <option value="200">200 DPI — Better</option>
+            <option value="300" selected>300 DPI — Print Quality</option>
+            <option value="600">600 DPI — High Quality</option>
+            <option value="720">720 DPI — Max (your printer)</option>
+          </select>
+        </div>
+        <div class="control-group">
           <label>Canvas Dimensions (cm)</label>
           <div class="dim-row">
             <input type="number" id="canvasW" class="dim-input" value="21" min="1" max="200" placeholder="W">
@@ -124,28 +150,76 @@
           </div>
         </div>
         <div class="control-group">
-          <label for="colorCount">Colors</label>
+          <label for="colorStrength">Color Tint Strength</label>
           <div class="range-wrap">
-            <input type="range" id="colorCount" min="4" max="32" value="8">
-            <span class="range-val" id="colorCountVal">8</span>
+            <input type="range" id="colorStrength" min="10" max="100" step="5" value="40">
+            <span class="range-val" id="colorStrengthVal">40%</span>
           </div>
         </div>
         <div class="control-group">
-          <label for="detailLevel">Detail <span id="detailAuto" class="detail-auto">(auto)</span></label>
+          <label for="minFontSize">Min Number Size (pt)</label>
           <div class="range-wrap">
-            <input type="range" id="detailLevel" min="300" max="3000" step="100" value="600">
-            <span class="range-val" id="detailVal">600px</span>
+            <input type="range" id="minFontSize" min="6" max="24" step="1" value="12">
+            <span class="range-val" id="minFontSizeVal">12</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Algorithm settings — matching drake7707/paintbynumbersgenerator -->
+      <div class="panel-section">
+        <h2 class="panel-section-title">Algorithm</h2>
+        <div class="control-group">
+          <label for="colorCount">Number of colors</label>
+          <div class="range-wrap">
+            <input type="range" id="colorCount" min="2" max="64" value="16">
+            <span class="range-val" id="colorCountVal">16</span>
           </div>
         </div>
         <div class="control-group">
-          <label for="minRegionSize">Min Region Size</label>
+          <label for="clusterPrecision">Cluster precision</label>
           <div class="range-wrap">
-            <input type="range" id="minRegionSize" min="10" max="200" step="5" value="25">
-            <span class="range-val" id="minRegionVal">25px</span>
+            <input type="range" id="clusterPrecision" min="0.1" max="10" step="0.1" value="1">
+            <span class="range-val" id="clusterPrecisionVal">1.0</span>
           </div>
         </div>
         <div class="control-group">
-          <label for="smoothness">Line Smoothness</label>
+          <label for="colorSpace">Clustering color space</label>
+          <select id="colorSpace" class="select-input">
+            <option value="rgb" selected>RGB</option>
+            <option value="hsl">HSL</option>
+            <option value="lab">Lab</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="narrowStripRuns">Narrow pixel strip cleanup runs</label>
+          <div class="range-wrap">
+            <input type="range" id="narrowStripRuns" min="0" max="10" step="1" value="3">
+            <span class="range-val" id="narrowStripRunsVal">3</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="minRegionSize">Remove facets smaller than (px)</label>
+          <div class="range-wrap">
+            <input type="range" id="minRegionSize" min="1" max="200" step="1" value="20">
+            <span class="range-val" id="minRegionVal">20px</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="maxFacets">Maximum facets</label>
+          <div class="range-wrap">
+            <input type="range" id="maxFacets" min="100" max="50000" step="100" value="10000">
+            <span class="range-val" id="maxFacetsVal">10000</span>
+          </div>
+        </div>
+        <div class="control-group">
+          <label for="facetRemovalOrder">Facet removal order</label>
+          <select id="facetRemovalOrder" class="select-input">
+            <option value="largeToSmall" selected>Large → Small (better quality)</option>
+            <option value="smallToLarge">Small → Large (faster)</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="smoothness">Border smoothing passes</label>
           <div class="range-wrap">
             <input type="range" id="smoothness" min="0" max="5" step="1" value="2">
             <span class="range-val" id="smoothnessVal">2</span>
@@ -175,7 +249,7 @@
           </div>
           <div class="paint-chips" id="paintChips"></div>
           <label class="toggle-label">
-            <input type="checkbox" id="allowMixing">
+            <input type="checkbox" id="allowMixing" checked>
             <span>Allow color mixing</span>
           </label>
           <p class="palette-hint" id="paletteHint">Add at least 2 colors.</p>

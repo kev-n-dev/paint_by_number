@@ -23,6 +23,7 @@
   const detailVal = $('detailVal');
   const detailAuto = $('detailAuto');
   const pageSizeEl = $('pageSize');
+  const printDpiEl = $('printDpi');
   const sharpness = $('sharpness');
   const sharpnessVal = $('sharpnessVal');
   const structure = $('structure');
@@ -36,10 +37,15 @@
   const warmthEl = $('warmth');
   const warmthVal = $('warmthVal');
   const cartoonOutlines = $('cartoonOutlines');
+  const simplifyEl = $('simplify');
+  const simplifyVal = $('simplifyVal');
   const useCustomPalette = $('useCustomPalette');
   const styleGrid = $('styleGrid');
   const stylePreviewCanvas = $('stylePreviewCanvas');
   const stylePreviewCard = $('stylePreviewCard');
+  const posterizeLevelsWrap = $('posterizeLevelsWrap');
+  const posterizeLevelsEl = $('posterizeLevels');
+  const posterizeLevelsVal = $('posterizeLevelsVal');
   const customPaletteUI = $('customPaletteUI');
   const paintColorPicker = $('paintColorPicker');
   const paintNameInput = $('paintNameInput');
@@ -54,6 +60,18 @@
   const allowMixing = $('allowMixing');
   const minRegionSize = $('minRegionSize');
   const minRegionVal = $('minRegionVal');
+  const colorStrengthEl = $('colorStrength');
+  const colorStrengthVal = $('colorStrengthVal');
+  const minFontSizeEl = $('minFontSize');
+  const minFontSizeVal = $('minFontSizeVal');
+  const clusterPrecisionEl = $('clusterPrecision');
+  const clusterPrecisionVal = $('clusterPrecisionVal');
+  const colorSpaceEl = $('colorSpace');
+  const narrowStripRunsEl = $('narrowStripRuns');
+  const narrowStripRunsVal = $('narrowStripRunsVal');
+  const maxFacetsEl = $('maxFacets');
+  const maxFacetsVal = $('maxFacetsVal');
+  const facetRemovalOrderEl = $('facetRemovalOrder');
   const smoothnessEl = $('smoothness');
   const smoothnessVal = $('smoothnessVal');
   const canvasWEl = $('canvasW');
@@ -281,6 +299,20 @@
 
   refreshPaletteUI();
 
+  // --- Set defaults: auto palette (best colors from image) ---
+  (function setDefaults() {
+    const basicIdx = paletteStore.palettes.findIndex(p => p.name.includes('Basic Acrylics'));
+    if (basicIdx !== -1) {
+      paletteStore.active = basicIdx;
+      savePaletteStore();
+      refreshPaletteUI();
+    }
+    // Default to auto palette — algorithm picks best colors from the image
+    useCustomPalette.checked = false;
+    customPaletteUI.hidden = true;
+    allowMixing.checked = false;
+  })();
+
   // --- Page size to detail mapping ---
   // Each page size maps to optimal detail (max dimension in px) that ensures
   // readable numbers when printed. Based on ~150 DPI with min 8pt numbers.
@@ -303,29 +335,32 @@
     letter: [21.6, 27.9], a4: [21, 29.7], a3: [29.7, 42], a2: [42, 59.4],
   };
 
-  pageSizeEl.addEventListener('change', () => {
-    const detail = PAGE_DETAIL[pageSizeEl.value];
-    if (detail) {
-      autoDetail = true;
-      detailLevel.value = detail;
-      detailVal.textContent = detail + 'px';
-      detailAuto.textContent = '(auto)';
+  function updateDpiInfo() {
+    const dpi = parseInt(printDpiEl.value) || 150;
+    const cw = parseFloat(canvasWEl.value) || 21;
+    const ch = parseFloat(canvasHEl.value) || 29.7;
+    const pxW = Math.round(cw / 2.54 * dpi);
+    const pxH = Math.round(ch / 2.54 * dpi);
+    if (detailAuto) {
+      detailAuto.textContent = `${pxW}×${pxH}px`;
       detailAuto.hidden = false;
-    } else {
-      autoDetail = false;
-      detailAuto.hidden = true;
     }
+  }
+
+  pageSizeEl.addEventListener('change', () => {
     const dims = PAGE_DIMS_CM[pageSizeEl.value];
     if (dims) { canvasWEl.value = dims[0]; canvasHEl.value = dims[1]; }
+    updateDpiInfo();
   });
+
+  printDpiEl.addEventListener('change', updateDpiInfo);
+  canvasWEl.addEventListener('input', updateDpiInfo);
+  canvasHEl.addEventListener('input', updateDpiInfo);
+
+  updateDpiInfo(); // show initial size
 
   // --- Upload / drag-drop ---
   colorCount.addEventListener('input', () => { colorCountVal.textContent = colorCount.value; });
-  detailLevel.addEventListener('input', () => {
-    detailVal.textContent = detailLevel.value + 'px';
-    autoDetail = false;
-    detailAuto.textContent = '(manual)';
-  });
   sharpness.addEventListener('input', () => {
     sharpnessVal.textContent = sharpness.value + '%';
     updateStylePreview();
@@ -351,7 +386,17 @@
     updateStylePreview();
   });
   cartoonOutlines.addEventListener('change', () => { updateStylePreview(); });
+  simplifyEl.addEventListener('input', () => {
+    const v = parseInt(simplifyEl.value);
+    simplifyVal.textContent = v === 0 ? 'Off' : v <= 3 ? 'Light' : v <= 6 ? 'Medium' : 'Strong';
+    updateStylePreview();
+  });
   minRegionSize.addEventListener('input', () => { minRegionVal.textContent = minRegionSize.value + 'px'; });
+  colorStrengthEl.addEventListener('input', () => { colorStrengthVal.textContent = colorStrengthEl.value + '%'; });
+  minFontSizeEl.addEventListener('input', () => { minFontSizeVal.textContent = minFontSizeEl.value; });
+  clusterPrecisionEl.addEventListener('input', () => { clusterPrecisionVal.textContent = parseFloat(clusterPrecisionEl.value).toFixed(1); });
+  narrowStripRunsEl.addEventListener('input', () => { narrowStripRunsVal.textContent = narrowStripRunsEl.value; });
+  maxFacetsEl.addEventListener('input', () => { maxFacetsVal.textContent = maxFacetsEl.value; });
   smoothnessEl.addEventListener('input', () => { smoothnessVal.textContent = smoothnessEl.value; });
 
   function updateStylePreview() {
@@ -397,18 +442,19 @@
   const generateText = $('generateText');
   const generateSpinner = $('generateSpinner');
 
-  generateBtn.addEventListener('click', () => {
-    if (!styledImage) return;
+  generateBtn.addEventListener('click', async () => {
+    if (!loadedImage) return;
     output.hidden = true;
     generateBtn.disabled = true;
-    generateText.textContent = 'Painting…';
+    generateText.textContent = 'Applying style…';
     generateSpinner.hidden = false;
+    // Compute full-res styled image now (only on generate, not on every slider change)
+    styledImage = await computeStyledImage();
+    generateText.textContent = 'Painting…';
     requestAnimationFrame(() => setTimeout(() => {
-      // Re-apply style with current settings before generating
-      applyStylePreview();
       generate(styledImage, parseInt(colorCount.value), null);
       generateBtn.disabled = false;
-      generateText.textContent = '🎨 Generate';
+      generateText.textContent = '🎨 Apply';
       generateSpinner.hidden = true;
     }, 80));
   });
@@ -420,12 +466,19 @@
     styleGrid.querySelectorAll('.style-card').forEach(c => c.classList.remove('active'));
     card.classList.add('active');
     currentStyle = card.dataset.style;
+    posterizeLevelsWrap.hidden = currentStyle !== 'posterize2';
     applyStylePreview();
   });
 
+  posterizeLevelsEl.addEventListener('input', () => {
+    posterizeLevelsVal.textContent = posterizeLevelsEl.value;
+    applyStylePreview();
+  });
+
+  // Preview only — fast, small canvas, no full-res computation
   function applyStylePreview() {
     if (!loadedImage) return;
-    const MAX = 400;
+    const MAX = 200; // tiny thumbnail for speed
     let w = loadedImage.width, h = loadedImage.height;
     if (w > MAX || h > MAX) { const s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
     stylePreviewCanvas.width = w;
@@ -435,26 +488,46 @@
     const imgData = ctx.getImageData(0, 0, w, h);
     applyStyleFilter(imgData, currentStyle, w, h);
     ctx.putImageData(imgData, 0, 0);
+    // Mark that the styled image needs recomputing before generate
+    styledImage = null;
+    generateBtn.disabled = false; // still allow generate — it will compute on click
+  }
 
-    // Store full-res styled image for generate
-    const fullW = loadedImage.width, fullH = loadedImage.height;
-    const fullCanvas = document.createElement('canvas');
-    fullCanvas.width = fullW; fullCanvas.height = fullH;
-    const fCtx = fullCanvas.getContext('2d');
-    fCtx.drawImage(loadedImage, 0, 0);
-    const fullData = fCtx.getImageData(0, 0, fullW, fullH);
-    applyStyleFilter(fullData, currentStyle, fullW, fullH);
-    fCtx.putImageData(fullData, 0, 0);
-    const sImg = new Image();
-    sImg.onload = () => {
-      styledImage = sImg;
-      generateBtn.disabled = false;
-    };
-    sImg.src = fullCanvas.toDataURL();
+  // Full-res styled image — only called when Generate is clicked
+  function computeStyledImage() {
+    return new Promise(resolve => {
+      const fullW = loadedImage.width, fullH = loadedImage.height;
+      const fullCanvas = document.createElement('canvas');
+      fullCanvas.width = fullW; fullCanvas.height = fullH;
+      const fCtx = fullCanvas.getContext('2d');
+      fCtx.drawImage(loadedImage, 0, 0);
+      const fullData = fCtx.getImageData(0, 0, fullW, fullH);
+      applyStyleFilter(fullData, currentStyle, fullW, fullH);
+      fCtx.putImageData(fullData, 0, 0);
+      const sImg = new Image();
+      sImg.onload = () => resolve(sImg);
+      sImg.src = fullCanvas.toDataURL();
+    });
   }
 
   function applyStyleFilter(imgData, style, w, h) {
     const d = imgData.data;
+
+    // Simplify: posterize to fewer tonal levels before style processing
+    const simplifyLevel = parseInt(simplifyEl.value);
+    if (simplifyLevel > 0) {
+      // Map 1–10 to 32–4 tonal levels (more simplify = fewer levels = bigger regions)
+      const levels = Math.max(4, Math.round(32 - simplifyLevel * 2.8));
+      const step = 256 / levels;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i]   = Math.round(Math.round(d[i]   / step) * step);
+        d[i+1] = Math.round(Math.round(d[i+1] / step) * step);
+        d[i+2] = Math.round(Math.round(d[i+2] / step) * step);
+      }
+      // Blur slightly to merge near-identical regions
+      if (simplifyLevel >= 4) boxBlur(d, w, h, Math.floor(simplifyLevel / 3));
+    }
+
     switch (style) {
       case 'none': break; // raw image, no style filter
       case 'realistic': break; // sharpness/structure sliders handle it
@@ -464,6 +537,7 @@
       case 'softpastel': filterSoftPastel(d, w, h); break;
       case 'oilpaint': filterOilPaint(d, w, h); break;
       case 'oilpaint2': filterOilPaint2(d, w, h); break;
+      case 'posterize2': filterPosterize2(d, w, h); break;
     }
     // Always apply sharpness and structure from sliders
     const sharpAmt = parseInt(sharpness.value) / 100;
@@ -655,6 +729,17 @@
   }
 
   function clamp(v) { return Math.max(0, Math.min(255, Math.round(v))); }
+
+  // Posterize with slider-controlled levels
+  function filterPosterize2(d, w, h) {
+    const levels = parseInt(posterizeLevelsEl.value) || 6;
+    const step = 255 / (levels - 1);
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]   = Math.round(Math.round(d[i]   / step) * step);
+      d[i+1] = Math.round(Math.round(d[i+1] / step) * step);
+      d[i+2] = Math.round(Math.round(d[i+2] / step) * step);
+    }
+  }
 
   // Oil Paint 2: intensity-binning algorithm
   // Groups neighboring pixels by intensity level, then assigns each pixel
@@ -849,15 +934,38 @@
 
   // --- Generate ---
   function generate(img, numColors, crop) {
-    const MAX = parseInt(detailLevel.value);
+    // Compute target print resolution from page dimensions × DPI
+    const dpi = parseInt(printDpiEl.value) || 150;
+    const cw = parseFloat(canvasWEl.value) || 21;
+    const ch = parseFloat(canvasHEl.value) || 29.7;
+    const printW = Math.round(cw / 2.54 * dpi);
+    const printH = Math.round(ch / 2.54 * dpi);
+
+    // PROCESSING resolution — capped at 800px for speed
+    // All quantization, region detection, smoothing happens here
+    const PROC_MAX = 800;
     let sw = img.width, sh = img.height, sx = 0, sy = 0;
     if (crop) { sx = crop.x; sy = crop.y; sw = crop.w; sh = crop.h; }
     let w = sw, h = sh;
-    if (w > MAX || h > MAX) { const s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+    if (w > PROC_MAX || h > PROC_MAX) { const s = PROC_MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
+
+    // Scale factor from processing → print resolution
+    const scaleX = printW / w;
+    const scaleY = printH / h;
+    // Use the smaller scale to maintain aspect ratio
+    const printScale = Math.min(scaleX, scaleY);
+    const outW = Math.round(w * printScale);
+    const outH = Math.round(h * printScale);
 
     srcCanvas.width = w; srcCanvas.height = h;
     const sCtx = srcCanvas.getContext('2d');
     sCtx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
+
+    // Pre-smooth: minimal noise removal only — preserve all detail
+    const rawImgData = sCtx.getImageData(0, 0, w, h);
+    edgePreservingSmooth(rawImgData.data, w, h, 1, 20);
+    sCtx.putImageData(rawImgData, 0, 0);
+
     const pixels = sCtx.getImageData(0, 0, w, h).data;
 
     const colors = [];
@@ -915,16 +1023,44 @@
       palette = extColors.map(e => e.rgb);
       paletteLabels = extColors.map(e => ({ name: e.label, hex: rgbToHex(e.rgb) }));
     } else {
-      palette = medianCut(colors, Math.min(colors.length, numColors * 2));
-      palette.unshift([255, 255, 255]);
-      palette = mergeToCount(palette, numColors);
+      // K-means clustering — color space from settings, weighted by frequency
+      const colorSpace = colorSpaceEl ? colorSpaceEl.value : 'rgb';
+      const precision = parseFloat(clusterPrecisionEl ? clusterPrecisionEl.value : '1');
+      // K-means returns exactly numColors — add white separately, don't merge down
+      palette = kMeansWeighted(colors, numColors, colorSpace, precision);
+      // Only add white if it's not already close to an existing palette color
+      const hasWhite = palette.some(c => c[0] > 240 && c[1] > 240 && c[2] > 240);
+      if (!hasWhite) palette.unshift([255, 255, 255]);
     }
 
     // Direct mapping: every pixel to nearest palette color
     let mapped = new Uint8Array(w * h);
     for (let i = 0; i < colors.length; i++) mapped[i] = nearestColor(colors[i], palette);
-    mapped = modeFilter(mapped, w, h);
-    mapped = modeFilter(mapped, w, h);
+
+    // Build edge strength map from original image (Sobel on luminance)
+    // Pixels with strong edges are protected from smoothing/merging
+    const edgeStrength = new Float32Array(w * h);
+    const pixels2 = srcCanvas.getContext('2d').getImageData(0, 0, w, h).data;
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const lum = (r, g, b) => 0.299*r + 0.587*g + 0.114*b;
+      const idx = (yy, xx) => { const i = (yy*w+xx)*4; return lum(pixels2[i], pixels2[i+1], pixels2[i+2]); };
+      const gx = -idx(y-1,x-1) - 2*idx(y,x-1) - idx(y+1,x-1) + idx(y-1,x+1) + 2*idx(y,x+1) + idx(y+1,x+1);
+      const gy = -idx(y-1,x-1) - 2*idx(y-1,x) - idx(y-1,x+1) + idx(y+1,x-1) + 2*idx(y+1,x) + idx(y+1,x+1);
+      edgeStrength[y*w+x] = Math.sqrt(gx*gx + gy*gy);
+    }
+    // Normalize
+    let maxEdge = 0;
+    for (let i = 0; i < edgeStrength.length; i++) if (edgeStrength[i] > maxEdge) maxEdge = edgeStrength[i];
+    if (maxEdge > 0) for (let i = 0; i < edgeStrength.length; i++) edgeStrength[i] /= maxEdge;
+    // Edge threshold: only protect the strongest 10% of edges (actual feature boundaries)
+    const EDGE_PROTECT = 0.6;
+
+    // Mode filter removed — weighted k-means + pre-smooth already handles noise
+    // Narrow strip cleanup — runs configurable times (drake7707 default: 3)
+    const stripRuns = parseInt(narrowStripRunsEl ? narrowStripRunsEl.value : '3');
+    for (let run = 0; run < stripRuns; run++) {
+      mapped = narrowPixelStripCleanup(mapped, palette, w, h);
+    }
 
     const regionMap = new Int32Array(w * h).fill(-1);
     const regionColors = [];
@@ -936,13 +1072,15 @@
       regionId++;
     }
 
-    // Merge small regions based on user setting
+    // Merge small regions — configurable order and max facets (matching drake7707)
     const minReg = parseInt(minRegionSize.value);
-    mergeSmallRegions(regionMap, regionColors, mapped, w, h, regionId, minReg);
+    const maxFacets = parseInt(maxFacetsEl ? maxFacetsEl.value : '10000');
+    const largeToSmall = !facetRemovalOrderEl || facetRemovalOrderEl.value === 'largeToSmall';
+    mergeSmallRegionsEdgeAware(regionMap, regionColors, mapped, w, h, regionId, minReg, edgeStrength, EDGE_PROTECT, maxFacets, largeToSmall);
 
-    // Smooth boundaries based on slider (0 = none, 5 = very smooth)
+    // Smooth boundaries — skip edge pixels
     const smoothPasses = parseInt(smoothnessEl.value);
-    smoothBoundaries(regionMap, mapped, regionColors, w, h, smoothPasses);
+    smoothBoundariesEdgeAware(regionMap, mapped, regionColors, w, h, smoothPasses, edgeStrength, EDGE_PROTECT);
 
     const paletteNumbers = new Map();
     let num = 1;
@@ -958,13 +1096,28 @@
     const MIN_REGION = 30;
     const labels = [];
     let minFs = Infinity;
+
+    // Identify background palette colors (near-white: R>220, G>220, B>220)
+    const bgColorIndices = new Set();
+    for (let ci = 0; ci < palette.length; ci++) {
+      const c = palette[ci];
+      if (c[0] > 220 && c[1] > 220 && c[2] > 220) bgColorIndices.add(ci);
+    }
+
+    // Find the largest region touching the image border — that's the background
+    const borderRegions = new Set();
+    for (let x = 0; x < w; x++) { borderRegions.add(regionMap[x]); borderRegions.add(regionMap[(h-1)*w+x]); }
+    for (let y = 0; y < h; y++) { borderRegions.add(regionMap[y*w]); borderRegions.add(regionMap[y*w+w-1]); }
+
     for (let r = 0; r < regionId; r++) {
       const pxList = regionPixels[r];
       if (pxList.length < MIN_REGION) continue;
+      // Skip background regions (border-touching + near-white color)
+      if (borderRegions.has(r) && bgColorIndices.has(regionColors[r])) continue;
       const pt = findInteriorPoint(regionMap, w, h, r, pxList);
       const maxByDist = pt.dist * 1.2;
       const maxByArea = Math.sqrt(pxList.length) / 4;
-      const fs = Math.max(4, Math.min(12, maxByDist, maxByArea));
+      const fs = Math.max(4, Math.min(14, maxByDist, maxByArea));
       if (fs < minFs) minFs = fs;
       labels.push({
         x: pt.x, y: pt.y,
@@ -978,7 +1131,7 @@
     const upscale = (minFs < MIN_READABLE && minFs > 0) ? Math.ceil(MIN_READABLE / minFs) : 1;
 
     // Store for re-render
-    renderData = { w, h, mapped, palette, regionMap, labels, paletteNumbers, regionColors, regionPixels, regionId, paletteLabels, upscale };
+    renderData = { w, h, outW, outH, mapped, palette, regionMap, labels, paletteNumbers, regionColors, regionPixels, regionId, paletteLabels, upscale: 1 };
 
     renderCanvas(outlineOnly.checked);
 
@@ -1062,87 +1215,91 @@
 
   function renderCanvas(outlineMode) {
     if (!renderData) return;
-    const { w, h, mapped, palette, regionMap, labels, upscale } = renderData;
-    const s = upscale || 1;
-    const ow = w * s, oh = h * s;
+    const { w, h, outW, outH, mapped, palette, regionMap, labels } = renderData;
+    const ow = outW || w, oh = outH || h;
+    const sx = ow / w, sy = oh / h;
 
     resultCanvas.width = ow; resultCanvas.height = oh;
     const ctx = resultCanvas.getContext('2d');
 
-    // Fill at upscaled resolution
+    // Fill at output resolution by nearest-neighbour scaling of region map
     const outData = ctx.createImageData(ow, oh);
     for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
-      const sx = Math.floor(x / s), sy = Math.floor(y / s);
-      const si = sy * w + sx;
+      const px = Math.min(w - 1, Math.floor(x / sx));
+      const py = Math.min(h - 1, Math.floor(y / sy));
+      const si = py * w + px;
       const pi = (y * ow + x) * 4;
       if (outlineMode) {
         outData.data[pi] = 255; outData.data[pi+1] = 255; outData.data[pi+2] = 255;
       } else {
         const c = palette[mapped[si]];
-        outData.data[pi]   = Math.round(c[0] * 0.25 + 255 * 0.75);
-        outData.data[pi+1] = Math.round(c[1] * 0.25 + 255 * 0.75);
-        outData.data[pi+2] = Math.round(c[2] * 0.25 + 255 * 0.75);
+        const tint = (parseInt(colorStrengthEl.value) || 25) / 100;
+        const white = 1 - tint;
+        outData.data[pi]   = Math.round(c[0] * tint + 255 * white);
+        outData.data[pi+1] = Math.round(c[1] * tint + 255 * white);
+        outData.data[pi+2] = Math.round(c[2] * tint + 255 * white);
       }
       outData.data[pi+3] = 255;
     }
     ctx.putImageData(outData, 0, 0);
 
-    // Outlines
+    // Outlines — drawn at output scale
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = outlineMode ? Math.max(0.8, s * 0.5) : Math.max(0.7, s * 0.4);
+    ctx.lineWidth = outlineMode ? Math.max(1, sx * 0.6) : Math.max(0.8, sx * 0.5);
     ctx.beginPath();
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const idx = y * w + x, rid = regionMap[idx];
-      if (x < w - 1 && regionMap[idx + 1] !== rid) { ctx.moveTo((x+1)*s, y*s); ctx.lineTo((x+1)*s, (y+1)*s); }
-      if (y < h - 1 && regionMap[idx + w] !== rid) { ctx.moveTo(x*s, (y+1)*s); ctx.lineTo((x+1)*s, (y+1)*s); }
+      if (x < w - 1 && regionMap[idx + 1] !== rid) { ctx.moveTo((x+1)*sx, y*sy); ctx.lineTo((x+1)*sx, (y+1)*sy); }
+      if (y < h - 1 && regionMap[idx + w] !== rid) { ctx.moveTo(x*sx, (y+1)*sy); ctx.lineTo((x+1)*sx, (y+1)*sy); }
     }
     ctx.stroke();
 
-    // Numbers
+    // Numbers — font size scales with output resolution
+    const minFs = parseInt(minFontSizeEl.value) || 10;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const lb of labels) {
-      const fs = lb.fs * s;
+      const fs = Math.max(minFs, lb.fs * sx);
       ctx.font = `500 ${fs}px Inter,system-ui`;
       if (outlineMode) {
         ctx.fillStyle = '#000';
-        ctx.fillText(lb.text, lb.x * s + s/2, lb.y * s + s/2);
+        ctx.fillText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
       } else {
-        ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, s * 0.8);
-        ctx.strokeText(lb.text, lb.x * s + s/2, lb.y * s + s/2);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, sx * 0.8);
+        ctx.strokeText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
         ctx.fillStyle = '#222';
-        ctx.fillText(lb.text, lb.x * s + s/2, lb.y * s + s/2);
+        ctx.fillText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
       }
     }
-    // Add watermark to tinted preview (not outline mode)
-    if (!outlineMode) addWatermark(ctx, ow, oh);
+    // Watermark removed — not needed for production use
   }
 
   // Render with full colors and outlines but no numbers (for after animation)
   function renderCanvasNoNumbers() {
     if (!renderData) return;
-    const { w, h, mapped, palette, regionMap, upscale } = renderData;
-    const s = upscale || 1;
-    const ow = w * s, oh = h * s;
+    const { w, h, outW, outH, mapped, palette, regionMap } = renderData;
+    const ow = outW || w, oh = outH || h;
+    const sx = ow / w, sy = oh / h;
 
     resultCanvas.width = ow; resultCanvas.height = oh;
     const ctx = resultCanvas.getContext('2d');
 
     const outData = ctx.createImageData(ow, oh);
     for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
-      const sx = Math.floor(x / s), sy = Math.floor(y / s);
-      const c = palette[mapped[sy * w + sx]];
+      const px = Math.min(w - 1, Math.floor(x / sx));
+      const py = Math.min(h - 1, Math.floor(y / sy));
+      const c = palette[mapped[py * w + px]];
       const pi = (y * ow + x) * 4;
       outData.data[pi] = c[0]; outData.data[pi+1] = c[1]; outData.data[pi+2] = c[2]; outData.data[pi+3] = 255;
     }
     ctx.putImageData(outData, 0, 0);
 
     ctx.strokeStyle = '#000';
-    ctx.lineWidth = Math.max(0.7, s * 0.4);
+    ctx.lineWidth = Math.max(0.8, sx * 0.5);
     ctx.beginPath();
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const idx = y * w + x, rid = regionMap[idx];
-      if (x < w - 1 && regionMap[idx + 1] !== rid) { ctx.moveTo((x+1)*s, y*s); ctx.lineTo((x+1)*s, (y+1)*s); }
-      if (y < h - 1 && regionMap[idx + w] !== rid) { ctx.moveTo(x*s, (y+1)*s); ctx.lineTo((x+1)*s, (y+1)*s); }
+      if (x < w - 1 && regionMap[idx + 1] !== rid) { ctx.moveTo((x+1)*sx, y*sy); ctx.lineTo((x+1)*sx, (y+1)*sy); }
+      if (y < h - 1 && regionMap[idx + w] !== rid) { ctx.moveTo(x*sx, (y+1)*sy); ctx.lineTo((x+1)*sx, (y+1)*sy); }
     }
     ctx.stroke();
   }
@@ -1577,9 +1734,10 @@
       return;
     }
 
-    const { w, h, palette, regionMap, regionColors, regionPixels, regionId, upscale } = renderData;
-    const s = upscale || 1;
-    const ow = w * s, oh = h * s;
+    const { w, h, outW, outH, palette, regionMap, regionColors, regionPixels, regionId } = renderData;
+    const ow = outW || w, oh = outH || h;
+    const sx = ow / w, sy = oh / h;
+    const s = sx; // use sx as the scale factor for pixel expansion
 
     // 1. Render the outline-only base and snapshot its pixels
     renderCanvas(true);
@@ -1613,11 +1771,12 @@
         if (!pxList) continue;
         const c = palette[regionColors[r]];
         if (!c) continue;
-        // Fill upscaled pixels for this region
+        // Fill output pixels for this region using the scale factors
         for (let p = 0; p < pxList.length; p++) {
           const px = pxList[p] & 0xFFFF, py = pxList[p] >> 16;
-          for (let dy = 0; dy < s; dy++) for (let dx = 0; dx < s; dx++) {
-            const ox = px * s + dx, oy = py * s + dy;
+          const x0 = Math.floor(px * sx), x1 = Math.floor((px + 1) * sx);
+          const y0 = Math.floor(py * sy), y1 = Math.floor((py + 1) * sy);
+          for (let oy = y0; oy < y1; oy++) for (let ox = x0; ox < x1; ox++) {
             if (ox >= ow || oy >= oh) continue;
             const pi = (oy * ow + ox) * 4;
             if (baseSnapshot[pi] > 180) {
@@ -1732,22 +1891,19 @@
 
   // Merge palette down to targetCount by repeatedly combining the two closest colors
   function mergeToCount(palette, targetCount) {
-    // Work with [r, g, b, weight] so merged colors are weighted averages
     let entries = palette.map(c => ({ r: c[0], g: c[1], b: c[2], w: 1 }));
 
     while (entries.length > targetCount) {
-      // Find the closest pair (perceptual distance)
+      // Find closest pair using Lab distance
       let bestDist = Infinity, bestI = 0, bestJ = 1;
       for (let i = 0; i < entries.length; i++) {
         for (let j = i + 1; j < entries.length; j++) {
-          const dr = entries[i].r - entries[j].r;
-          const dg = entries[i].g - entries[j].g;
-          const db = entries[i].b - entries[j].b;
-          const d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+          const labA = rgbToLab(entries[i].r, entries[i].g, entries[i].b);
+          const labB = rgbToLab(entries[j].r, entries[j].g, entries[j].b);
+          const d = labDistSq(labA, labB);
           if (d < bestDist) { bestDist = d; bestI = i; bestJ = j; }
         }
       }
-      // Merge j into i (weighted average)
       const a = entries[bestI], b = entries[bestJ];
       const tw = a.w + b.w;
       a.r = (a.r * a.w + b.r * b.w) / tw;
@@ -1760,18 +1916,342 @@
     return entries.map(e => [Math.round(e.r), Math.round(e.g), Math.round(e.b)]);
   }
 
+  // --- Lab color space conversion ---
+  // sRGB → linear → XYZ → Lab (D65 illuminant)
+  function rgbToLab(r, g, b) {
+    // Normalize to 0-1
+    let R = r / 255, G = g / 255, B = b / 255;
+    // Linearize
+    R = R > 0.04045 ? Math.pow((R + 0.055) / 1.055, 2.4) : R / 12.92;
+    G = G > 0.04045 ? Math.pow((G + 0.055) / 1.055, 2.4) : G / 12.92;
+    B = B > 0.04045 ? Math.pow((B + 0.055) / 1.055, 2.4) : B / 12.92;
+    // RGB → XYZ (D65)
+    const X = (R * 0.4124564 + G * 0.3575761 + B * 0.1804375) / 0.95047;
+    const Y = (R * 0.2126729 + G * 0.7151522 + B * 0.0721750) / 1.00000;
+    const Z = (R * 0.0193339 + G * 0.1191920 + B * 0.9503041) / 1.08883;
+    const f = v => v > 0.008856 ? Math.cbrt(v) : 7.787 * v + 16/116;
+    return [116 * f(Y) - 16, 500 * (f(X) - f(Y)), 200 * (f(Y) - f(Z))];
+  }
+
+  function labToRgb(L, a, b) {
+    const fy = (L + 16) / 116, fx = a / 500 + fy, fz = fy - b / 200;
+    const inv = v => v > 0.206897 ? v*v*v : (v - 16/116) / 7.787;
+    let X = inv(fx) * 0.95047, Y = inv(fy), Z = inv(fz) * 1.08883;
+    let R = X *  3.2404542 + Y * -1.5371385 + Z * -0.4985314;
+    let G = X * -0.9692660 + Y *  1.8760108 + Z *  0.0415560;
+    let B = X *  0.0556434 + Y * -0.2040259 + Z *  1.0572252;
+    const lin = v => v > 0.0031308 ? 1.055 * Math.pow(v, 1/2.4) - 0.055 : 12.92 * v;
+    return [
+      Math.max(0, Math.min(255, Math.round(lin(R) * 255))),
+      Math.max(0, Math.min(255, Math.round(lin(G) * 255))),
+      Math.max(0, Math.min(255, Math.round(lin(B) * 255))),
+    ];
+  }
+
+  function labDistSq(a, b) {
+    const dL = a[0]-b[0], da = a[1]-b[1], db = a[2]-b[2];
+    return dL*dL + da*da + db*db;
+  }
+
+  // Unified weighted k-means supporting RGB, HSL, and Lab color spaces
+  // Groups pixels by quantized color first, then clusters unique colors weighted by frequency
+  function kMeansWeighted(pixels, numColors, colorSpace = 'rgb', minDelta = 1, maxIter = 50) {
+    if (pixels.length === 0) return [];
+
+    // Group pixels by quantized color (2-bit chop)
+    const colorGroups = {};
+    const total = pixels.length;
+    for (const p of pixels) {
+      const r = p[0] >> 2 << 2, g = p[1] >> 2 << 2, b = p[2] >> 2 << 2;
+      const key = r + ',' + g + ',' + b;
+      if (!colorGroups[key]) colorGroups[key] = { r, g, b, count: 0 };
+      colorGroups[key].count++;
+    }
+
+    const uniqueColors = Object.values(colorGroups);
+    const n = uniqueColors.length;
+    // Can't have more clusters than unique colors
+    const k = Math.min(numColors, n);
+    if (n <= k) return uniqueColors.map(c => [c.r, c.g, c.b]);
+
+    // Convert to target color space with weights
+    const vectors = uniqueColors.map(c => {
+      let v;
+      if (colorSpace === 'lab') v = rgbToLab(c.r, c.g, c.b);
+      else if (colorSpace === 'hsl') v = rgbToHslArr(c.r, c.g, c.b);
+      else v = [c.r, c.g, c.b]; // RGB
+      return { v, rgb: [c.r, c.g, c.b], weight: c.count / total };
+    });
+
+    // k-means++ init weighted by frequency
+    const centroids = [vectors[Math.floor(Math.random() * n)].v.slice()];
+    while (centroids.length < k) {
+      const dists = vectors.map(c => {
+        let minD = Infinity;
+        for (const cent of centroids) { const d = vecDistSq(c.v, cent); if (d < minD) minD = d; }
+        return minD * c.weight;
+      });
+      const tot = dists.reduce((s, d) => s + d, 0);
+      let r = Math.random() * tot;
+      for (let i = 0; i < n; i++) { r -= dists[i]; if (r <= 0) { centroids.push(vectors[i].v.slice()); break; } }
+      if (centroids.length < numColors) centroids.push(vectors[n - 1].v.slice());
+    }
+
+    // Weighted k-means iterations
+    let assignments = new Int32Array(n);
+    for (let iter = 0; iter < maxIter; iter++) {
+      let changed = false;
+      for (let i = 0; i < n; i++) {
+        let best = 0, bestD = Infinity;
+        for (let c = 0; c < centroids.length; c++) {
+          const d = vecDistSq(vectors[i].v, centroids[c]);
+          if (d < bestD) { bestD = d; best = c; }
+        }
+        if (assignments[i] !== best) { assignments[i] = best; changed = true; }
+      }
+      if (!changed) break;
+      const sums = Array.from({ length: k }, () => new Array(centroids[0].length).fill(0));
+      const weights = new Float64Array(k);
+      for (let i = 0; i < n; i++) {
+        const c = assignments[i], w = vectors[i].weight;
+        for (let d = 0; d < sums[c].length; d++) sums[c][d] += vectors[i].v[d] * w;
+        weights[c] += w;
+      }
+      let totalDelta = 0;
+      for (let c = 0; c < k; c++) {
+        if (weights[c] > 0) {
+          const newCent = sums[c].map(v => v / weights[c]);
+          totalDelta += vecDistSq(centroids[c], newCent);
+          centroids[c] = newCent;
+        } else {
+          // Empty cluster — reinitialise to a random point to avoid dead centroids
+          centroids[c] = vectors[Math.floor(Math.random() * n)].v.slice();
+        }
+      }
+      if (Math.sqrt(totalDelta) < minDelta) break;
+    }
+
+    // Filter out any remaining empty clusters and convert to RGB
+    const result = [];
+    for (let c = 0; c < k; c++) {
+      let rgb;
+      if (colorSpace === 'lab') rgb = labToRgb(centroids[c][0], centroids[c][1], centroids[c][2]);
+      else if (colorSpace === 'hsl') rgb = hslToRgbArr(centroids[c][0], centroids[c][1], centroids[c][2]);
+      else rgb = [Math.round(centroids[c][0]), Math.round(centroids[c][1]), Math.round(centroids[c][2])];
+      // Skip invalid colors (all zeros from uninitialised centroids)
+      if (rgb[0] === 0 && rgb[1] === 0 && rgb[2] === 0 && c > 0) continue;
+      result.push(rgb);
+    }
+    return result;
+  }
+
+  function vecDistSq(a, b) {
+    let s = 0;
+    for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; }
+    return s;
+  }
+
+  function rgbToHslArr(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+    if (max !== min) {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+        case g: h = (b - r) / d + 2; break;
+        case b: h = (r - g) / d + 4; break;
+      }
+      h /= 6;
+    }
+    return [h * 360, s * 100, l * 100]; // scale for better k-means distance
+  }
+
+  function hslToRgbArr(h, s, l) {
+    h /= 360; s /= 100; l /= 100;
+    let r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3); g = hue2rgb(p, q, h); b = hue2rgb(p, q, h - 1/3);
+    }
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  }
+
+  // Keep old kMeansLabWeighted as alias for backward compat
+  function kMeansLabWeighted(pixels, numColors) {
+    return kMeansWeighted(pixels, numColors, 'lab');
+  }
+
+  // Narrow pixel strip cleanup — removes 1-pixel-wide strips that create ugly thin lines.
+  // For each interior pixel: if its color differs from both top+bottom OR both left+right
+  // neighbors, it's part of a narrow strip and gets replaced with the closer neighbor.
+  // Inspired by drake7707/paintbynumbersgenerator narrowPixelStripCleanup.
+  function narrowPixelStripCleanup(mapped, palette, w, h) {
+    const out = new Uint8Array(mapped); // copy so we don't cascade replacements
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        const cur = mapped[idx];
+        const top    = mapped[(y - 1) * w + x];
+        const bottom = mapped[(y + 1) * w + x];
+        const left   = mapped[y * w + (x - 1)];
+        const right  = mapped[y * w + (x + 1)];
+
+        if (cur !== top && cur !== bottom) {
+          // Narrow horizontal strip — replace with the perceptually closer of top/bottom
+          const labCur = rgbToLab(palette[cur][0], palette[cur][1], palette[cur][2]);
+          const dTop    = labDistSq(labCur, rgbToLab(palette[top][0],    palette[top][1],    palette[top][2]));
+          const dBottom = labDistSq(labCur, rgbToLab(palette[bottom][0], palette[bottom][1], palette[bottom][2]));
+          out[idx] = dTop <= dBottom ? top : bottom;
+        } else if (cur !== left && cur !== right) {
+          // Narrow vertical strip — replace with the perceptually closer of left/right
+          const labCur = rgbToLab(palette[cur][0], palette[cur][1], palette[cur][2]);
+          const dLeft  = labDistSq(labCur, rgbToLab(palette[left][0],  palette[left][1],  palette[left][2]));
+          const dRight = labDistSq(labCur, rgbToLab(palette[right][0], palette[right][1], palette[right][2]));
+          out[idx] = dLeft <= dRight ? left : right;
+        }
+      }
+    }
+    return out;
+  }
+
   function colorDistSq(a, b) {
     const dr = a[0]-b[0], dg = a[1]-b[1], db = a[2]-b[2];
     return dr*dr + dg*dg + db*db;
   }
 
+  // Nearest color using Lab distance for perceptual accuracy
   function nearestColor(pixel, palette) {
+    const labPixel = rgbToLab(pixel[0], pixel[1], pixel[2]);
     let minDist = Infinity, best = 0;
     for (let i = 0; i < palette.length; i++) {
-      const d = colorDistSq(pixel, palette[i]);
+      const labP = rgbToLab(palette[i][0], palette[i][1], palette[i][2]);
+      const d = labDistSq(labPixel, labP);
       if (d < minDist) { minDist = d; best = i; }
     }
     return best;
+  }
+
+  // Edge-aware mode filter: skip pixels on strong edges
+  function modeFilterEdgeAware(mapped, w, h, edgeStrength, threshold) {
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      // Protect edge pixels — keep their original value
+      if (edgeStrength[idx] >= threshold) { out[idx] = mapped[idx]; continue; }
+      const counts = {};
+      let best = mapped[idx], bestCount = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const ny = y + dy, nx = x + dx;
+        if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
+        const v = mapped[ny * w + nx], c = (counts[v] || 0) + 1;
+        counts[v] = c;
+        if (c > bestCount) { bestCount = c; best = v; }
+      }
+      out[idx] = best;
+    }
+    return out;
+  }
+
+  // Edge-aware small region merge with max facets cap and configurable removal order
+  function mergeSmallRegionsEdgeAware(regionMap, regionColors, mapped, w, h, regionId, threshold, edgeStrength, edgeThreshold, maxFacets = Infinity, largeToSmall = true) {
+    const size = w * h;
+    const regionHasEdge = new Uint8Array(regionId);
+    for (let i = 0; i < size; i++) {
+      if (edgeStrength[i] >= edgeThreshold) regionHasEdge[regionMap[i]] = 1;
+    }
+
+    // Build sorted processing order — large-to-small (drake7707 default) or small-to-large
+    const buildOrder = () => {
+      const sizes = new Int32Array(regionId);
+      for (let i = 0; i < size; i++) sizes[regionMap[i]]++;
+      const order = [];
+      for (let r = 0; r < regionId; r++) { if (sizes[r] > 0) order.push(r); }
+      order.sort((a, b) => largeToSmall ? sizes[b] - sizes[a] : sizes[a] - sizes[b]);
+      return { order, sizes };
+    };
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const { order, sizes } = buildOrder();
+
+      // Count active facets
+      let activeFacets = order.length;
+
+      for (const r of order) {
+        if (sizes[r] === 0) continue;
+        const shouldMerge = sizes[r] < threshold || activeFacets > maxFacets;
+        if (!shouldMerge) continue;
+        if (regionHasEdge[r] && sizes[r] >= threshold) continue; // protect edge regions unless over max
+
+        const neighborCounts = {};
+        for (let i = 0; i < size; i++) {
+          if (regionMap[i] !== r) continue;
+          const x = i % w, y = (i - x) / w;
+          if (x > 0 && regionMap[i-1] !== r) neighborCounts[regionMap[i-1]] = (neighborCounts[regionMap[i-1]]||0) + 1;
+          if (x < w-1 && regionMap[i+1] !== r) neighborCounts[regionMap[i+1]] = (neighborCounts[regionMap[i+1]]||0) + 1;
+          if (y > 0 && regionMap[i-w] !== r) neighborCounts[regionMap[i-w]] = (neighborCounts[regionMap[i-w]]||0) + 1;
+          if (y < h-1 && regionMap[i+w] !== r) neighborCounts[regionMap[i+w]] = (neighborCounts[regionMap[i+w]]||0) + 1;
+        }
+        let best = -1, bestCnt = 0;
+        for (const [nr, cnt] of Object.entries(neighborCounts)) {
+          if (cnt > bestCnt) { bestCnt = cnt; best = parseInt(nr); }
+        }
+        if (best === -1) continue;
+        for (let i = 0; i < size; i++) {
+          if (regionMap[i] === r) { regionMap[i] = best; mapped[i] = regionColors[best]; }
+        }
+        sizes[best] += sizes[r];
+        sizes[r] = 0;
+        activeFacets--;
+        changed = true;
+      }
+    }
+  }
+
+  // Edge-aware boundary smoothing: skip edge pixels
+  function smoothBoundariesEdgeAware(regionMap, mapped, regionColors, w, h, passes, edgeStrength, edgeThreshold) {
+    if (passes === 0) return;
+    const radius = Math.min(passes, 3);
+    const size = w * h;
+    for (let pass = 0; pass < passes; pass++) {
+      const newMap = new Int32Array(regionMap);
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        const idx = y * w + x;
+        if (edgeStrength[idx] >= edgeThreshold) continue; // protect edges
+        const cur = regionMap[idx];
+        if (regionMap[idx-1] === cur && regionMap[idx+1] === cur &&
+            regionMap[idx-w] === cur && regionMap[idx+w] === cur) continue;
+        const counts = {};
+        for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+          const ny = y+dy, nx = x+dx;
+          if (ny < 0 || ny >= h || nx < 0 || nx >= w) continue;
+          const r = regionMap[ny * w + nx];
+          counts[r] = (counts[r] || 0) + 1;
+        }
+        let best = cur, bestCnt = 0;
+        for (const [r, cnt] of Object.entries(counts)) {
+          if (cnt > bestCnt) { bestCnt = cnt; best = parseInt(r); }
+        }
+        if (best !== cur) newMap[idx] = best;
+      }
+      for (let i = 0; i < size; i++) {
+        if (newMap[i] !== regionMap[i]) {
+          regionMap[i] = newMap[i];
+          mapped[i] = regionColors[regionMap[i]];
+        }
+      }
+    }
   }
 
   // Smooth jagged region boundaries by reassigning edge pixels to the
