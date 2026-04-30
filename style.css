@@ -376,3 +376,16 @@ body {
   border-radius:6px; font-family:inherit; font-size:0.82rem; text-align:center;
 }
 .dim-sep { color:var(--c-text2); font-size:0.85rem; }
+
+/* Mode switcher */
+.mode-switcher {
+  display: flex; gap: 0.3rem; margin-top: 0.6rem;
+  background: var(--c-bg); border-radius: 8px; padding: 3px;
+}
+.mode-btn {
+  flex: 1; padding: 0.35rem 0.5rem; border: none; border-radius: 6px;
+  font-family: inherit; font-size: 0.75rem; font-weight: 500;
+  cursor: pointer; background: transparent; color: var(--c-text2);
+  transition: background 0.15s, color 0.15s;
+}
+.mode-btn.active { background: var(--c-card); color: var(--c-text); box-shadow: var(--shadow); }

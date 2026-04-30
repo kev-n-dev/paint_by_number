@@ -1,4 +1,5 @@
 (() => {
+  console.log('app.js: IIFE started');
   const $ = (id) => document.getElementById(id);
   const imageInput = $('imageInput');
   const colorCount = $('colorCount');
@@ -413,6 +414,7 @@
       uploadPlaceholder.hidden = true;
       uploadPreview.hidden = false;
       stylePreviewCard.hidden = false;
+      pixelGenerateBtn.disabled = false;
       applyStylePreview();
     };
     img.src = URL.createObjectURL(file);
@@ -441,6 +443,72 @@
 
   const generateText = $('generateText');
   const generateSpinner = $('generateSpinner');
+
+  // --- Mode switching ---
+  const modePbn = $('modePbn');
+  const modePixel = $('modePixel');
+  const pbnSettings = $('pbnSettings');
+  const pixelSettings = $('pixelSettings');
+  const pixelOutput = $('pixelOutput');
+  const pixelGenerateBtn = $('pixelGenerateBtn');
+  console.log('pixelGenerateBtn element:', pixelGenerateBtn);
+  const pixelGenerateText = $('pixelGenerateText');
+  const pixelGenerateSpinner = $('pixelGenerateSpinner');
+  const pixelCanvas = $('pixelCanvas');
+  const pixelViewport = $('pixelViewport');
+  const pixelLegend = $('pixelLegend');
+  const pixelCoverageTable = $('pixelCoverageTable');
+  const pixelInfo = $('pixelInfo');
+  const pbnInfo = $('pbnInfo');
+  const pixelDownloadBtn = $('pixelDownloadBtn');
+  const pixelDownloadPdfBtn = $('pixelDownloadPdfBtn');
+  const pixelPreviewBtn = $('pixelPreviewBtn');
+  const pixelZoomInBtn = $('pixelZoomInBtn');
+  const pixelZoomOutBtn = $('pixelZoomOutBtn');
+  const pixelZoomResetBtn = $('pixelZoomResetBtn');
+  const pixelOutlineOnly = $('pixelOutlineOnly');
+  const pixelGridSizeEl = $('pixelGridSize');
+  const pixelGridSizeVal = $('pixelGridSizeVal');
+  const pixelColorsEl = $('pixelColors');
+  const pixelColorsVal = $('pixelColorsVal');
+  const pixelColorSpaceEl = $('pixelColorSpace');
+  const pixelColorStrengthEl = $('pixelColorStrength');
+  const pixelColorStrengthVal = $('pixelColorStrengthVal');
+  const pixelPageSizeEl = $('pixelPageSize');
+
+  let appMode = 'pbn';
+  let pixelRenderData = null;
+
+  function switchMode(mode) {
+    console.log('switchMode:', mode, 'loadedImage:', !!loadedImage, 'pixelGenerateBtn:', pixelGenerateBtn?.disabled);
+    appMode = mode;
+    modePbn.classList.toggle('active', mode === 'pbn');
+    modePixel.classList.toggle('active', mode === 'pixel');
+    pbnSettings.hidden = mode !== 'pbn';
+    pixelSettings.hidden = mode !== 'pixel';
+    // Show/hide results
+    if (mode === 'pbn') {
+      pixelOutput.hidden = true;
+      pixelInfo.hidden = true;
+      pbnInfo.hidden = false;
+    } else {
+      $('output').hidden = true;
+      pbnInfo.hidden = true;
+      pixelInfo.hidden = false;
+      if (!pixelRenderData) $('infoAside').hidden = true;
+    }
+    if (loadedImage) {
+      generateBtn.disabled = mode !== 'pbn';
+      pixelGenerateBtn.disabled = false; // always enable if image loaded
+    }
+  }
+
+  modePbn.addEventListener('click', () => switchMode('pbn'));
+  modePixel.addEventListener('click', () => switchMode('pixel'));
+
+  pixelGridSizeEl.addEventListener('input', () => { pixelGridSizeVal.textContent = pixelGridSizeEl.value + 'px'; });
+  pixelColorsEl.addEventListener('input', () => { pixelColorsVal.textContent = pixelColorsEl.value; });
+  pixelColorStrengthEl.addEventListener('input', () => { pixelColorStrengthVal.textContent = pixelColorStrengthEl.value + '%'; });
 
   generateBtn.addEventListener('click', async () => {
     if (!loadedImage) return;
@@ -538,6 +606,7 @@
       case 'oilpaint': filterOilPaint(d, w, h); break;
       case 'oilpaint2': filterOilPaint2(d, w, h); break;
       case 'posterize2': filterPosterize2(d, w, h); break;
+      case 'pixelate': filterPixelate(d, w, h); break;
     }
     // Always apply sharpness and structure from sliders
     const sharpAmt = parseInt(sharpness.value) / 100;
@@ -741,6 +810,34 @@
     }
   }
 
+  // Pixel art / mosaic mode — averages each block into a single flat color
+  function filterPixelate(d, w, h) {
+    const bs = 16; // default block size (pixelate style removed from PBN mode)
+    for (let by = 0; by < h; by += bs) {
+      for (let bx = 0; bx < w; bx += bs) {
+        // Compute average color of this block
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let y = by; y < Math.min(by + bs, h); y++) {
+          for (let x = bx; x < Math.min(bx + bs, w); x++) {
+            const pi = (y * w + x) * 4;
+            r += d[pi]; g += d[pi+1]; b += d[pi+2];
+            count++;
+          }
+        }
+        r = Math.round(r / count);
+        g = Math.round(g / count);
+        b = Math.round(b / count);
+        // Fill entire block with average color
+        for (let y = by; y < Math.min(by + bs, h); y++) {
+          for (let x = bx; x < Math.min(bx + bs, w); x++) {
+            const pi = (y * w + x) * 4;
+            d[pi] = r; d[pi+1] = g; d[pi+2] = b;
+          }
+        }
+      }
+    }
+  }
+
   // Oil Paint 2: intensity-binning algorithm
   // Groups neighboring pixels by intensity level, then assigns each pixel
   // the average color of the most common intensity bin in its neighborhood.
@@ -835,6 +932,390 @@
       d[pi] = r / cnt; d[pi+1] = g / cnt; d[pi+2] = b / cnt;
     }
   }
+
+  // --- Pixel Canvas Mode ---
+  console.log('app.js: attaching pixelGenerateBtn listener, element:', pixelGenerateBtn);
+  pixelGenerateBtn.addEventListener('click', async () => {
+    console.log('pixelGenerateBtn click handler fired, loadedImage:', !!loadedImage);
+    if (!loadedImage) { alert('Please upload an image first.'); return; }
+    pixelGenerateBtn.disabled = true;
+    pixelGenerateText.textContent = 'Building grid…';
+    pixelGenerateSpinner.hidden = false;
+    await new Promise(r => requestAnimationFrame(() => setTimeout(r, 100)));
+    try {
+      generatePixelCanvas();
+    } catch(e) {
+      console.error('Pixel canvas error:', e);
+      alert('Error: ' + e.message);
+    } finally {
+      pixelGenerateBtn.disabled = false;
+      pixelGenerateText.textContent = '🔲 Generate Grid';
+      pixelGenerateSpinner.hidden = true;
+    }
+  });
+
+  // Global handler for inline onclick fallback
+  window.handlePixelGenerate = async () => {
+    console.log('handlePixelGenerate called, loadedImage:', !!loadedImage);
+    if (!loadedImage) { alert('Please upload an image first.'); return; }
+    pixelGenerateBtn.disabled = true;
+    pixelGenerateText.textContent = 'Building grid…';
+    pixelGenerateSpinner.hidden = false;
+    await new Promise(r => requestAnimationFrame(() => setTimeout(r, 100)));
+    try {
+      generatePixelCanvas();
+    } catch(e) {
+      console.error('Pixel canvas error:', e);
+      alert('Error: ' + e.message);
+    } finally {
+      pixelGenerateBtn.disabled = false;
+      pixelGenerateText.textContent = '🔲 Generate Grid';
+      pixelGenerateSpinner.hidden = true;
+    }
+  };
+
+  function generatePixelCanvas() {
+    const cellSize = parseInt(pixelGridSizeEl ? pixelGridSizeEl.value : '20') || 20;
+    const numColors = parseInt(pixelColorsEl ? pixelColorsEl.value : '16') || 16;
+    const colorSpace = pixelColorSpaceEl ? pixelColorSpaceEl.value : 'rgb';
+    console.log('generatePixelCanvas called', { cellSize, numColors, colorSpace, loadedImage: !!loadedImage });
+
+    // Draw source image to offscreen canvas
+    const MAX = 800;
+    let sw = loadedImage.width, sh = loadedImage.height;
+    if (sw > MAX || sh > MAX) { const s = MAX / Math.max(sw, sh); sw = Math.round(sw * s); sh = Math.round(sh * s); }
+    const offscreen = document.createElement('canvas');
+    offscreen.width = sw; offscreen.height = sh;
+    const oCtx = offscreen.getContext('2d');
+    oCtx.drawImage(loadedImage, 0, 0, sw, sh);
+    const imgData = oCtx.getImageData(0, 0, sw, sh).data;
+
+    // Build grid cells
+    const cols = Math.ceil(sw / cellSize);
+    const rows = Math.ceil(sh / cellSize);
+    const cellColors = []; // [r,g,b] average for each cell
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        let r = 0, g = 0, b = 0, count = 0;
+        const x0 = col * cellSize, y0 = row * cellSize;
+        const x1 = Math.min(x0 + cellSize, sw), y1 = Math.min(y0 + cellSize, sh);
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          const pi = (y * sw + x) * 4;
+          r += imgData[pi]; g += imgData[pi+1]; b += imgData[pi+2]; count++;
+        }
+        cellColors.push([Math.round(r/count), Math.round(g/count), Math.round(b/count)]);
+      }
+    }
+
+    // Quantize cell colors using k-means
+    const palette = kMeansWeighted(cellColors, numColors, colorSpace, 1);
+    const hasWhite = palette.some(c => c[0] > 240 && c[1] > 240 && c[2] > 240);
+    if (!hasWhite) palette.unshift([255, 255, 255]);
+
+    // Map each cell to nearest palette color
+    const cellPaletteIdx = cellColors.map(c => nearestColor(c, palette));
+
+    // Assign numbers to palette colors
+    const paletteNums = new Map();
+    let num = 1;
+    for (const idx of cellPaletteIdx) {
+      if (!paletteNums.has(idx)) paletteNums.set(idx, num++);
+    }
+
+    // Store for re-render
+    const MIN_CELL_RENDER = 24;
+    const renderScale = cellSize < MIN_CELL_RENDER ? Math.ceil(MIN_CELL_RENDER / cellSize) : 1;
+    const rCell = cellSize * renderScale;
+    pixelRenderData = { cols, rows, cellSize, rCell, cellPaletteIdx, palette, paletteNums, sw, sh };
+
+    renderPixelCanvas(pixelOutlineOnly.checked);
+
+    // Legend in info sidebar
+    pixelLegend.innerHTML = '';
+    for (const [ci, n] of paletteNums) {
+      const c = palette[ci], hex = rgbToHex(c);
+      const item = document.createElement('div');
+      item.className = 'legend-item';
+      item.innerHTML = `<span class="legend-swatch" style="background:${hex}">${n}</span><span>${hex}</span>`;
+      pixelLegend.appendChild(item);
+    }
+
+    // Coverage table
+    const totalCells = cols * rows;
+    const cellCounts = {};
+    for (const ci of cellPaletteIdx) cellCounts[ci] = (cellCounts[ci] || 0) + 1;
+    const coverageRows = [];
+    for (const [ci, n] of paletteNums) {
+      const c = palette[ci], hex = rgbToHex(c);
+      const pct = (((cellCounts[ci] || 0) / totalCells) * 100).toFixed(1);
+      coverageRows.push({ n, hex, pct });
+    }
+    coverageRows.sort((a, b) => parseFloat(b.pct) - parseFloat(a.pct));
+    pixelCoverageTable.innerHTML = '<table><thead><tr><th>#</th><th>Color</th><th>Coverage</th></tr></thead><tbody>' +
+      coverageRows.map((r, i) => `<tr style="background:${i%2===0?'#fafafa':'#fff'}">
+        <td>${r.n}</td>
+        <td><span class="coverage-swatch" style="background:${r.hex}"></span> ${r.hex}</td>
+        <td><div class="coverage-bar"><div class="coverage-fill" style="width:${r.pct}%;background:${r.hex}"></div></div> ${r.pct}%</td>
+      </tr>`).join('') + '</tbody></table>';
+
+    pixelInfo.hidden = false;
+    $('infoAside').hidden = false;
+    pixelOutput.hidden = false;
+    requestAnimationFrame(() => resetPixelView());
+    pixelOutput.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderPixelCanvas(outlineOnly) {
+    if (!pixelRenderData) return;
+    const { cols, rows, cellSize, rCell, cellPaletteIdx, palette, paletteNums } = pixelRenderData;
+    const scale = rCell / cellSize;
+    const cw = cols * rCell, ch = rows * rCell;
+
+    pixelCanvas.width = cw; pixelCanvas.height = ch;
+    const ctx = pixelCanvas.getContext('2d');
+    const tint = (parseInt(pixelColorStrengthEl ? pixelColorStrengthEl.value : '40') || 40) / 100;
+
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const ci = cellPaletteIdx[row * cols + col];
+        const c = palette[ci];
+        const x = col * rCell, y = row * rCell;
+        if (outlineOnly) {
+          ctx.fillStyle = '#fff';
+        } else {
+          const r = Math.round(c[0] * tint + 255 * (1 - tint));
+          const g = Math.round(c[1] * tint + 255 * (1 - tint));
+          const b = Math.round(c[2] * tint + 255 * (1 - tint));
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+        }
+        ctx.fillRect(x, y, rCell, rCell);
+      }
+    }
+
+    // Grid lines
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = Math.max(0.5, scale * 0.5);
+    ctx.beginPath();
+    for (let col = 0; col <= cols; col++) { ctx.moveTo(col * rCell, 0); ctx.lineTo(col * rCell, ch); }
+    for (let row = 0; row <= rows; row++) { ctx.moveTo(0, row * rCell); ctx.lineTo(cw, row * rCell); }
+    ctx.stroke();
+
+    // Numbers in each cell — sized to fit the rendered cell
+    const fs = Math.max(8, Math.min(rCell * 0.5, 20));
+    ctx.font = `500 ${fs}px Inter,system-ui`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const ci = cellPaletteIdx[row * cols + col];
+        const n = String(paletteNums.get(ci));
+        const cx = col * rCell + rCell / 2;
+        const cy = row * rCell + rCell / 2;
+        if (outlineOnly) {
+          ctx.fillStyle = '#000';
+          ctx.fillText(n, cx, cy);
+        } else {
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.strokeText(n, cx, cy);
+          ctx.fillStyle = '#222'; ctx.fillText(n, cx, cy);
+        }
+      }
+    }
+  }
+
+  pixelOutlineOnly.addEventListener('change', () => { renderPixelCanvas(pixelOutlineOnly.checked); });
+
+  // --- Pixel Canvas Paint Preview ---
+  let pixelAnimId = null;
+
+  function stopPixelAnim() {
+    if (pixelAnimId) { cancelAnimationFrame(pixelAnimId); pixelAnimId = null; }
+    pixelPreviewBtn.textContent = '▶ Preview Paint';
+  }
+
+  pixelPreviewBtn.addEventListener('click', () => {
+    if (!pixelRenderData) return;
+    if (pixelAnimId) { stopPixelAnim(); renderPixelCanvas(pixelOutlineOnly.checked); return; }
+
+    const { cols, rows, cellSize, rCell, cellPaletteIdx, palette, paletteNums } = pixelRenderData;
+    const cw = cols * rCell, ch = rows * rCell;
+    const tint = (parseInt(pixelColorStrengthEl ? pixelColorStrengthEl.value : '40') || 40) / 100;
+
+    // Start from outline-only base — render it first so canvas is sized correctly
+    renderPixelCanvas(true);
+    const ctx = pixelCanvas.getContext('2d');
+    // Canvas is now cw×ch from renderPixelCanvas
+    const actualCw = pixelCanvas.width, actualCh = pixelCanvas.height;
+    const baseSnap = ctx.getImageData(0, 0, actualCw, actualCh).data;
+    const workBuf = new Uint8ClampedArray(baseSnap);
+
+    // Sort cells by palette color group, shuffle within groups for a natural painting feel
+    const totalCells = cols * rows;
+    const order = Array.from({ length: totalCells }, (_, i) => i);
+    // Sort by palette index so same-color cells fill together, with slight shuffle
+    order.sort((a, b) => {
+      const diff = cellPaletteIdx[a] - cellPaletteIdx[b];
+      return diff !== 0 ? diff : Math.random() - 0.5;
+    });
+
+    const DURATION = 10000;
+    let painted = 0;
+    pixelPreviewBtn.textContent = '⏹ Stop';
+    const startTime = performance.now();
+
+    function tick(now) {
+      const progress = Math.min((now - startTime) / DURATION, 1);
+      const target = Math.floor(progress * totalCells);
+
+      for (let i = painted; i < target; i++) {
+        const cellIdx = order[i];
+        const col = cellIdx % cols, row = Math.floor(cellIdx / cols);
+        const ci = cellPaletteIdx[cellIdx];
+        const c = palette[ci];
+        const x0 = col * rCell, y0 = row * rCell;
+        const x1 = Math.min(x0 + rCell, actualCw), y1 = Math.min(y0 + rCell, actualCh);
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+          const pi = (y * actualCw + x) * 4;
+          if (baseSnap[pi] > 180) { // only paint white areas, keep grid lines
+            workBuf[pi] = c[0]; workBuf[pi+1] = c[1]; workBuf[pi+2] = c[2];
+          }
+        }
+      }
+      painted = target;
+
+      ctx.putImageData(new ImageData(new Uint8ClampedArray(workBuf), actualCw, actualCh), 0, 0);
+
+      if (progress < 1) {
+        pixelAnimId = requestAnimationFrame(tick);
+      } else {
+        pixelAnimId = null;
+        pixelPreviewBtn.textContent = '▶ Preview Paint';
+        // Final clean render — full color, no numbers
+        renderPixelCanvasNoNumbers();
+      }
+    }
+
+    pixelAnimId = requestAnimationFrame(tick);
+  });
+
+  function renderPixelCanvasNoNumbers() {
+    if (!pixelRenderData) return;
+    const { cols, rows, rCell, cellPaletteIdx, palette } = pixelRenderData;
+    const cw = cols * rCell, ch = rows * rCell;
+    const ctx = pixelCanvas.getContext('2d');
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const ci = cellPaletteIdx[row * cols + col];
+        const c = palette[ci];
+        ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+        ctx.fillRect(col * rCell, row * rCell, rCell, rCell);
+      }
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    for (let col = 0; col <= cols; col++) { ctx.moveTo(col*rCell,0); ctx.lineTo(col*rCell,ch); }
+    for (let row = 0; row <= rows; row++) { ctx.moveTo(0,row*rCell); ctx.lineTo(cw,row*rCell); }
+    ctx.stroke();
+  }
+
+  pixelDownloadBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.download = 'pixel-canvas.png';
+    a.href = pixelCanvas.toDataURL('image/png');
+    a.click();
+  });
+
+  pixelDownloadPdfBtn.addEventListener('click', () => {
+    if (!pixelRenderData) return;
+    const { palette, paletteNums, cols, rows, cellSize, cellPaletteIdx } = pixelRenderData;
+    const pageLabel = pixelPageSizeEl ? pixelPageSizeEl.options[pixelPageSizeEl.selectedIndex].text : 'Letter';
+
+    // Page 1: outline grid
+    renderPixelCanvas(true);
+    const outlineUrl = pixelCanvas.toDataURL('image/png');
+    // Page 2: coloured preview
+    renderPixelCanvas(false);
+    const colourUrl = pixelCanvas.toDataURL('image/png');
+    // Restore
+    renderPixelCanvas(pixelOutlineOnly.checked);
+
+    const totalCells = cols * rows;
+    const cellCounts = {};
+    for (const ci of cellPaletteIdx) cellCounts[ci] = (cellCounts[ci] || 0) + 1;
+
+    const legendRows = [];
+    for (const [ci, n] of paletteNums) {
+      const c = palette[ci], hex = rgbToHex(c);
+      const pct = (((cellCounts[ci] || 0) / totalCells) * 100).toFixed(1);
+      legendRows.push({ n, hex, pct });
+    }
+    legendRows.sort((a, b) => parseFloat(b.pct) - parseFloat(a.pct));
+
+    const win = window.open('', '_blank');
+    if (!win) { alert('Please allow pop-ups.'); return; }
+
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Pixel Canvas</title>
+    <style>
+      *{margin:0;padding:0;box-sizing:border-box}
+      body{font-family:Inter,system-ui,sans-serif;background:#fff;color:#1a1d23}
+      .page{width:100%;padding:0.4in;page-break-after:always}
+      .page:last-child{page-break-after:auto}
+      img{max-width:100%;height:auto;display:block;border:1px solid #ddd;border-radius:4px}
+      h1{font-size:16px;font-weight:700;margin-bottom:8px}
+      .legend-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:12px}
+      .legend-item{display:flex;align-items:center;gap:5px;font-size:11px}
+      .swatch{width:24px;height:24px;border-radius:4px;flex-shrink:0;border:1px solid rgba(0,0,0,.12);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .page2{display:flex;gap:16px;align-items:flex-start}
+      .page2-left{flex:1}
+      .page2-right{width:180px;flex-shrink:0}
+      .page2-right img{width:100%;border-radius:4px;border:1px solid #ddd}
+      .page2-right p{font-size:8px;color:#999;text-align:center;margin-top:3px}
+      @media print{@page{margin:0.5in}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}
+    </style></head><body>
+    <div class="page"><h1>Pixel Canvas</h1><img src="${outlineUrl}"></div>
+    <div class="page">
+      <h1>Color Guide</h1>
+      <div class="page2">
+        <div class="page2-left">
+          <div class="legend-grid">
+            ${legendRows.map(r => `<div class="legend-item"><div class="swatch" style="background:${r.hex}">${r.n}</div><span>${r.hex} (${r.pct}%)</span></div>`).join('')}
+          </div>
+        </div>
+        <div class="page2-right">
+          <img src="${colourUrl}">
+          <p>Finished preview</p>
+        </div>
+      </div>
+    </div>
+    </body></html>`);
+    win.document.close();
+    setTimeout(() => win.print(), 600);
+  });
+
+  // Zoom/pan for pixel viewport
+  let pzoom = 1, ppanX = 0, ppanY = 0, ppanning = false, ppanSX = 0, ppanSY = 0, ppanOX = 0, ppanOY = 0;
+  function applyPixelTransform() { pixelCanvas.style.transform = `translate(${ppanX}px,${ppanY}px) scale(${pzoom})`; }
+  function resetPixelView() {
+    const vw = pixelViewport.clientWidth, vh = pixelViewport.clientHeight;
+    pzoom = Math.min(vw / pixelCanvas.width, vh / pixelCanvas.height, 1);
+    ppanX = (vw - pixelCanvas.width * pzoom) / 2;
+    ppanY = (vh - pixelCanvas.height * pzoom) / 2;
+    applyPixelTransform();
+  }
+  function pzoomAt(cx, cy, f) {
+    const nz = Math.min(8, Math.max(0.1, pzoom * f));
+    const r = nz / pzoom;
+    ppanX = cx - (cx - ppanX) * r; ppanY = cy - (cy - ppanY) * r; pzoom = nz;
+    applyPixelTransform();
+  }
+  pixelZoomInBtn.addEventListener('click', () => { const r = pixelViewport.getBoundingClientRect(); pzoomAt(r.width/2, r.height/2, 1.3); });
+  pixelZoomOutBtn.addEventListener('click', () => { const r = pixelViewport.getBoundingClientRect(); pzoomAt(r.width/2, r.height/2, 1/1.3); });
+  pixelZoomResetBtn.addEventListener('click', resetPixelView);
+  pixelViewport.addEventListener('wheel', (e) => { e.preventDefault(); const r = pixelViewport.getBoundingClientRect(); pzoomAt(e.clientX-r.left, e.clientY-r.top, e.deltaY<0?1.3:1/1.3); }, { passive: false });
+  pixelViewport.addEventListener('mousedown', (e) => { ppanning=true; ppanSX=e.clientX; ppanSY=e.clientY; ppanOX=ppanX; ppanOY=ppanY; pixelViewport.classList.add('grabbing'); });
+  window.addEventListener('mousemove', (e) => { if (!ppanning) return; ppanX=ppanOX+(e.clientX-ppanSX); ppanY=ppanOY+(e.clientY-ppanSY); applyPixelTransform(); });
+  window.addEventListener('mouseup', () => { ppanning=false; pixelViewport.classList.remove('grabbing'); });
 
   // --- Download ---
   downloadBtn.addEventListener('click', () => {
@@ -1131,7 +1612,9 @@
     const upscale = (minFs < MIN_READABLE && minFs > 0) ? Math.ceil(MIN_READABLE / minFs) : 1;
 
     // Store for re-render
-    renderData = { w, h, outW, outH, mapped, palette, regionMap, labels, paletteNumbers, regionColors, regionPixels, regionId, paletteLabels, upscale: 1 };
+    const pixelMode = currentStyle === 'pixelate';
+    const blockSize = pixelMode ? 16 : 0;
+    renderData = { w, h, outW, outH, mapped, palette, regionMap, labels, paletteNumbers, regionColors, regionPixels, regionId, paletteLabels, upscale: 1, pixelMode, blockSize };
 
     renderCanvas(outlineOnly.checked);
 
@@ -1215,7 +1698,7 @@
 
   function renderCanvas(outlineMode) {
     if (!renderData) return;
-    const { w, h, outW, outH, mapped, palette, regionMap, labels } = renderData;
+    const { w, h, outW, outH, mapped, palette, regionMap, labels, pixelMode, blockSize } = renderData;
     const ow = outW || w, oh = outH || h;
     const sx = ow / w, sy = oh / h;
 
@@ -1253,6 +1736,16 @@
       if (y < h - 1 && regionMap[idx + w] !== rid) { ctx.moveTo(x*sx, (y+1)*sy); ctx.lineTo((x+1)*sx, (y+1)*sy); }
     }
     ctx.stroke();
+
+    // In pixel mode, draw grid lines over the blocks
+    if (pixelMode && blockSize > 0) {
+      ctx.strokeStyle = outlineMode ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.3)';
+      ctx.lineWidth = Math.max(0.5, sx * 0.3);
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += blockSize) { ctx.moveTo(x * sx, 0); ctx.lineTo(x * sx, oh); }
+      for (let y = 0; y <= h; y += blockSize) { ctx.moveTo(0, y * sy); ctx.lineTo(ow, y * sy); }
+      ctx.stroke();
+    }
 
     // Numbers — font size scales with output resolution
     const minFs = parseInt(minFontSizeEl.value) || 10;
@@ -2364,4 +2857,5 @@
   function rgbToHex([r, g, b]) {
     return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
   }
+  console.log('app.js: IIFE completed successfully');
 })();
