@@ -40,6 +40,16 @@
       <!-- ── PBN settings ── -->
       <div id="pbnSettings">
 
+        <!-- Quick presets -->
+        <div class="panel-section">
+          <h2 class="panel-section-title">Quick Start</h2>
+          <div class="preset-btns">
+            <button class="preset-btn" data-preset="easy">Easy<br><span>Few colors, big regions</span></button>
+            <button class="preset-btn active" data-preset="medium">Medium<br><span>Balanced detail</span></button>
+            <button class="preset-btn" data-preset="hard">Hard<br><span>More detail, smaller regions</span></button>
+          </div>
+        </div>
+
         <!-- Style picker -->
         <div class="panel-section">
           <h2 class="panel-section-title">Style</h2>
@@ -53,6 +63,8 @@
             <button class="style-card" data-style="oilpaint"><span class="style-icon">🖌️</span><span>Oil Paint</span></button>
             <button class="style-card" data-style="oilpaint2"><span class="style-icon">🎨</span><span>Oil Paint 2</span></button>
             <button class="style-card" data-style="posterize2"><span class="style-icon">🟥</span><span>Posterize</span></button>
+            <button class="style-card" data-style="dithered"><span class="style-icon">▓</span><span>Dithered</span></button>
+            <button class="style-card" data-style="vectorportrait"><span class="style-icon">👤</span><span>Vector Portrait</span></button>
           </div>
           <div class="control-group" id="posterizeLevelsWrap" hidden>
             <label for="posterizeLevels">Levels</label>
@@ -63,9 +75,51 @@
           </div>
         </div>
 
-        <!-- Image adjustments -->
+        <!-- Main controls -->
         <div class="panel-section">
-          <h2 class="panel-section-title">Image</h2>
+          <h2 class="panel-section-title">Settings</h2>
+          <div class="control-group">
+            <label for="colorCount">Colors</label>
+            <div class="range-wrap">
+              <input type="range" id="colorCount" min="2" max="64" value="16">
+              <span class="range-val" id="colorCountVal">16</span>
+            </div>
+          </div>
+          <div class="control-group">
+            <label for="renderEngine">Render Quality</label>
+            <select id="renderEngine" class="select-input">
+              <option value="standard" selected>Standard</option>
+              <option value="vector">Vector (smooth borders)</option>
+              <option value="slic">Enhanced (smoother)</option>
+              <option value="dither">Dithered (textured)</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="pageSize">Print Size</label>
+            <select id="pageSize" class="select-input">
+              <option value="custom">Custom</option>
+              <option value="4x6">4×6 Photo</option>
+              <option value="5x7">5×7 Photo</option>
+              <option value="a5">A5</option>
+              <option value="letter" selected>Letter (8.5×11")</option>
+              <option value="a4">A4</option>
+              <option value="a3">A3</option>
+              <option value="a2">A2</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="printDpi">Print Quality <span id="detailAuto" class="detail-auto"></span></label>
+            <select id="printDpi" class="select-input">
+              <option value="150">Good (150 DPI)</option>
+              <option value="300" selected>Great (300 DPI)</option>
+              <option value="600">Best (600 DPI)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Advanced: Image -->
+        <details class="panel-section collapsible">
+          <summary class="panel-section-title">Image Adjustments ▾</summary>
           <div class="control-group">
             <label for="simplify">Simplify</label>
             <div class="range-wrap">
@@ -119,37 +173,13 @@
             <input type="checkbox" id="cartoonOutlines">
             <span>Cartoon outlines</span>
           </label>
-        </div>
+        </details>
 
-        <!-- Canvas -->
-        <div class="panel-section">
-          <h2 class="panel-section-title">Canvas</h2>
+        <!-- Advanced: Algorithm -->
+        <details class="panel-section collapsible">
+          <summary class="panel-section-title">Advanced ▾</summary>
           <div class="control-group">
-            <label for="pageSize">Print Size</label>
-            <select id="pageSize" class="select-input">
-              <option value="custom">Custom</option>
-              <option value="4x6">4×6 Photo</option>
-              <option value="5x7">5×7 Photo</option>
-              <option value="a5">A5 (148×210mm)</option>
-              <option value="letter" selected>Letter (8.5×11")</option>
-              <option value="a4">A4 (210×297mm)</option>
-              <option value="a3">A3 (297×420mm)</option>
-              <option value="a2">A2 (420×594mm)</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="printDpi">Print Quality (DPI) <span id="detailAuto" class="detail-auto"></span></label>
-            <select id="printDpi" class="select-input">
-              <option value="96">96 DPI — Draft</option>
-              <option value="150">150 DPI — Good</option>
-              <option value="200">200 DPI — Better</option>
-              <option value="300" selected>300 DPI — Print Quality</option>
-              <option value="600">600 DPI — High Quality</option>
-              <option value="720">720 DPI — Max</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label>Canvas Dimensions (cm)</label>
+            <label>Canvas (cm)</label>
             <div class="dim-row">
               <input type="number" id="canvasW" class="dim-input" value="21" min="1" max="200" placeholder="W">
               <span class="dim-sep">×</span>
@@ -157,82 +187,70 @@
             </div>
           </div>
           <div class="control-group">
-            <label for="colorStrength">Color Tint Strength</label>
+            <label for="colorStrength">Color Tint</label>
             <div class="range-wrap">
               <input type="range" id="colorStrength" min="10" max="100" step="5" value="40">
               <span class="range-val" id="colorStrengthVal">40%</span>
             </div>
           </div>
           <div class="control-group">
-            <label for="minFontSize">Min Number Size (pt)</label>
+            <label for="minFontSize">Number Size</label>
             <div class="range-wrap">
               <input type="range" id="minFontSize" min="6" max="24" step="1" value="12">
               <span class="range-val" id="minFontSizeVal">12</span>
             </div>
           </div>
-        </div>
-
-        <!-- Algorithm -->
-        <div class="panel-section">
-          <h2 class="panel-section-title">Algorithm</h2>
           <div class="control-group">
-            <label for="colorCount">Number of colors</label>
-            <div class="range-wrap">
-              <input type="range" id="colorCount" min="2" max="64" value="16">
-              <span class="range-val" id="colorCountVal">16</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="clusterPrecision">Cluster precision</label>
+            <label for="clusterPrecision">Precision</label>
             <div class="range-wrap">
               <input type="range" id="clusterPrecision" min="0.1" max="10" step="0.1" value="1">
               <span class="range-val" id="clusterPrecisionVal">1.0</span>
             </div>
           </div>
           <div class="control-group">
-            <label for="colorSpace">Clustering color space</label>
+            <label for="colorSpace">Color Space</label>
             <select id="colorSpace" class="select-input">
-              <option value="rgb" selected>RGB</option>
+              <option value="rgb">RGB</option>
               <option value="hsl">HSL</option>
-              <option value="lab">Lab</option>
+              <option value="lab" selected>Lab</option>
             </select>
           </div>
           <div class="control-group">
-            <label for="narrowStripRuns">Narrow strip cleanup runs</label>
+            <label for="narrowStripRuns">Strip Cleanup</label>
             <div class="range-wrap">
               <input type="range" id="narrowStripRuns" min="0" max="10" step="1" value="3">
               <span class="range-val" id="narrowStripRunsVal">3</span>
             </div>
           </div>
           <div class="control-group">
-            <label for="minRegionSize">Remove facets smaller than (px)</label>
+            <label for="minRegionSize">Min Region</label>
             <div class="range-wrap">
               <input type="range" id="minRegionSize" min="1" max="200" step="1" value="20">
               <span class="range-val" id="minRegionVal">20px</span>
             </div>
           </div>
           <div class="control-group">
-            <label for="maxFacets">Maximum facets</label>
+            <label for="maxFacets">Max Regions</label>
             <div class="range-wrap">
               <input type="range" id="maxFacets" min="100" max="50000" step="100" value="10000">
               <span class="range-val" id="maxFacetsVal">10000</span>
             </div>
           </div>
           <div class="control-group">
-            <label for="facetRemovalOrder">Facet removal order</label>
+            <label for="facetRemovalOrder">Merge Order</label>
             <select id="facetRemovalOrder" class="select-input">
-              <option value="largeToSmall" selected>Large → Small (better quality)</option>
-              <option value="smallToLarge">Small → Large (faster)</option>
+              <option value="largeToSmall" selected>Large → Small</option>
+              <option value="smallToLarge">Small → Large</option>
             </select>
           </div>
           <div class="control-group">
-            <label for="smoothness">Border smoothing passes</label>
+            <label for="smoothness">Border Smoothing</label>
             <div class="range-wrap">
               <input type="range" id="smoothness" min="0" max="5" step="1" value="2">
               <span class="range-val" id="smoothnessVal">2</span>
             </div>
           </div>
-        </div>
+        </details>
 
         <!-- Palette -->
         <div class="panel-section">
@@ -315,7 +333,7 @@
             </div>
           </div>
         </div>
-        <button class="btn btn-primary btn-generate" id="pixelGenerateBtn" disabled onclick="console.log('PIXEL BTN CLICKED', this.disabled); if(typeof handlePixelGenerate==='function') handlePixelGenerate();">
+        <button class="btn btn-primary btn-generate" id="pixelGenerateBtn" disabled onclick="if(window.handlePixelGenerate) window.handlePixelGenerate();">
           <span id="pixelGenerateText">🔲 Generate Grid</span>
           <span id="pixelGenerateSpinner" class="spinner" hidden>
             <span class="spinner-brush">🖌️</span>
@@ -409,8 +427,8 @@
     </main>
   </div>
   <canvas id="srcCanvas" hidden></canvas>
+  <script src="https://unpkg.com/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
   <script>
-    // Global error catcher — logs any JS error before app.js runs
     window.onerror = function(msg, src, line, col, err) {
       console.error('GLOBAL ERROR:', msg, 'at line', line, err);
       return false;

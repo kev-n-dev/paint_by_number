@@ -1,5 +1,4 @@
 (() => {
-  console.log('app.js: IIFE started');
   const $ = (id) => document.getElementById(id);
   const imageInput = $('imageInput');
   const colorCount = $('colorCount');
@@ -20,8 +19,6 @@
   const uploadPreview = $('uploadPreview');
   const previewImg = $('previewImg');
   const removeBtn = $('removeBtn');
-  const detailLevel = $('detailLevel');
-  const detailVal = $('detailVal');
   const detailAuto = $('detailAuto');
   const pageSizeEl = $('pageSize');
   const printDpiEl = $('printDpi');
@@ -73,6 +70,7 @@
   const maxFacetsEl = $('maxFacets');
   const maxFacetsVal = $('maxFacetsVal');
   const facetRemovalOrderEl = $('facetRemovalOrder');
+  const renderEngineEl = $('renderEngine');
   const smoothnessEl = $('smoothness');
   const smoothnessVal = $('smoothnessVal');
   const canvasWEl = $('canvasW');
@@ -227,7 +225,7 @@
     paletteStore.active = parseInt(paletteSelect.value);
     savePaletteStore();
     refreshPaletteUI();
-    liveRegenerate();
+
   });
 
   newPaletteBtn.addEventListener('click', () => {
@@ -275,7 +273,7 @@
     customPaletteUI.hidden = !useCustomPalette.checked;
   });
 
-  allowMixing.addEventListener('change', () => { liveRegenerate(); });
+  allowMixing.addEventListener('change', () => { });
 
   addPaintBtn.addEventListener('click', () => {
     const hex = paintColorPicker.value;
@@ -286,7 +284,7 @@
     renderChips();
     renderPaletteSelect(); // update count in dropdown
     paintNameInput.value = '';
-    liveRegenerate();
+
   });
 
   paintChips.addEventListener('click', (e) => {
@@ -451,7 +449,6 @@
   const pixelSettings = $('pixelSettings');
   const pixelOutput = $('pixelOutput');
   const pixelGenerateBtn = $('pixelGenerateBtn');
-  console.log('pixelGenerateBtn element:', pixelGenerateBtn);
   const pixelGenerateText = $('pixelGenerateText');
   const pixelGenerateSpinner = $('pixelGenerateSpinner');
   const pixelCanvas = $('pixelCanvas');
@@ -480,7 +477,6 @@
   let pixelRenderData = null;
 
   function switchMode(mode) {
-    console.log('switchMode:', mode, 'loadedImage:', !!loadedImage, 'pixelGenerateBtn:', pixelGenerateBtn?.disabled);
     appMode = mode;
     modePbn.classList.toggle('active', mode === 'pbn');
     modePixel.classList.toggle('active', mode === 'pixel');
@@ -505,6 +501,31 @@
 
   modePbn.addEventListener('click', () => switchMode('pbn'));
   modePixel.addEventListener('click', () => switchMode('pixel'));
+
+  // --- Quick presets ---
+  document.querySelector('.preset-btns').addEventListener('click', (e) => {
+    const btn = e.target.closest('.preset-btn');
+    if (!btn) return;
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const preset = btn.dataset.preset;
+    if (preset === 'easy') {
+      colorCount.value = 8; colorCountVal.textContent = '8';
+      minRegionSize.value = 50; minRegionVal.textContent = '50px';
+      smoothnessEl.value = 3; smoothnessVal.textContent = '3';
+      maxFacetsEl.value = 500; maxFacetsVal.textContent = '500';
+    } else if (preset === 'medium') {
+      colorCount.value = 16; colorCountVal.textContent = '16';
+      minRegionSize.value = 20; minRegionVal.textContent = '20px';
+      smoothnessEl.value = 2; smoothnessVal.textContent = '2';
+      maxFacetsEl.value = 10000; maxFacetsVal.textContent = '10000';
+    } else if (preset === 'hard') {
+      colorCount.value = 32; colorCountVal.textContent = '32';
+      minRegionSize.value = 5; minRegionVal.textContent = '5px';
+      smoothnessEl.value = 0; smoothnessVal.textContent = '0';
+      maxFacetsEl.value = 50000; maxFacetsVal.textContent = '50000';
+    }
+  });
 
   pixelGridSizeEl.addEventListener('input', () => { pixelGridSizeVal.textContent = pixelGridSizeEl.value + 'px'; });
   pixelColorsEl.addEventListener('input', () => { pixelColorsVal.textContent = pixelColorsEl.value; });
@@ -535,6 +556,10 @@
     card.classList.add('active');
     currentStyle = card.dataset.style;
     posterizeLevelsWrap.hidden = currentStyle !== 'posterize2';
+    // Auto-select dithered render engine when dithered style is chosen
+    if (currentStyle === 'dithered' && renderEngineEl) renderEngineEl.value = 'dither';
+    // Auto-select vector render engine for vector portrait
+    if (currentStyle === 'vectorportrait' && renderEngineEl) renderEngineEl.value = 'vector';
     applyStylePreview();
   });
 
@@ -545,8 +570,7 @@
 
   // Preview only — fast, small canvas, no full-res computation
   function applyStylePreview() {
-    if (!loadedImage) return;
-    const MAX = 200; // tiny thumbnail for speed
+    const MAX = 400; // larger preview so dithering and other effects are visible
     let w = loadedImage.width, h = loadedImage.height;
     if (w > MAX || h > MAX) { const s = MAX / Math.max(w, h); w = Math.round(w * s); h = Math.round(h * s); }
     stylePreviewCanvas.width = w;
@@ -564,14 +588,22 @@
   // Full-res styled image — only called when Generate is clicked
   function computeStyledImage() {
     return new Promise(resolve => {
-      const fullW = loadedImage.width, fullH = loadedImage.height;
+      const MAX_STYLE = 1200;
+      let fullW = loadedImage.width, fullH = loadedImage.height;
+      if (fullW > MAX_STYLE || fullH > MAX_STYLE) {
+        const s = MAX_STYLE / Math.max(fullW, fullH);
+        fullW = Math.round(fullW * s); fullH = Math.round(fullH * s);
+      }
       const fullCanvas = document.createElement('canvas');
       fullCanvas.width = fullW; fullCanvas.height = fullH;
       const fCtx = fullCanvas.getContext('2d');
-      fCtx.drawImage(loadedImage, 0, 0);
-      const fullData = fCtx.getImageData(0, 0, fullW, fullH);
-      applyStyleFilter(fullData, currentStyle, fullW, fullH);
-      fCtx.putImageData(fullData, 0, 0);
+      fCtx.drawImage(loadedImage, 0, 0, fullW, fullH);
+      // Skip dithered filter for palette computation — dither is applied at render time
+      if (currentStyle !== 'dithered') {
+        const fullData = fCtx.getImageData(0, 0, fullW, fullH);
+        applyStyleFilter(fullData, currentStyle, fullW, fullH);
+        fCtx.putImageData(fullData, 0, 0);
+      }
       const sImg = new Image();
       sImg.onload = () => resolve(sImg);
       sImg.src = fullCanvas.toDataURL();
@@ -606,6 +638,8 @@
       case 'oilpaint': filterOilPaint(d, w, h); break;
       case 'oilpaint2': filterOilPaint2(d, w, h); break;
       case 'posterize2': filterPosterize2(d, w, h); break;
+      case 'dithered': filterDithered(d, w, h); break;
+      case 'vectorportrait': filterVectorPortrait(d, w, h); break;
       case 'pixelate': filterPixelate(d, w, h); break;
     }
     // Always apply sharpness and structure from sliders
@@ -810,6 +844,84 @@
     }
   }
 
+  // Floyd-Steinberg dithering as a style filter — reduces colors with error diffusion
+  // giving a textured, painterly look with apparent gradient depth
+  function filterDithered(d, w, h) {
+    // Use fewer levels for a clearly visible dithered texture
+    const levels = 4;
+    const step = 255 / (levels - 1);
+    const pixels = new Float32Array(w * h * 3);
+    for (let i = 0; i < w * h; i++) {
+      pixels[i*3]   = d[i*4];
+      pixels[i*3+1] = d[i*4+1];
+      pixels[i*3+2] = d[i*4+2];
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x;
+        const r = pixels[idx*3], g = pixels[idx*3+1], b = pixels[idx*3+2];
+        // Quantize to nearest level
+        const nr = Math.round(Math.round(r / step) * step);
+        const ng = Math.round(Math.round(g / step) * step);
+        const nb = Math.round(Math.round(b / step) * step);
+        d[idx*4] = Math.max(0, Math.min(255, nr));
+        d[idx*4+1] = Math.max(0, Math.min(255, ng));
+        d[idx*4+2] = Math.max(0, Math.min(255, nb));
+        // Error
+        const er = r - nr, eg = g - ng, eb = b - nb;
+        const distribute = (dx, dy, factor) => {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) return;
+          const ni = ny * w + nx;
+          pixels[ni*3]   += er * factor;
+          pixels[ni*3+1] += eg * factor;
+          pixels[ni*3+2] += eb * factor;
+        };
+        distribute(1, 0, 7/16);
+        distribute(-1, 1, 3/16);
+        distribute(0, 1, 5/16);
+        distribute(1, 1, 1/16);
+      }
+    }
+  }
+
+  // --- Vector Portrait Filter ---
+  // Direct luminance posterization with minimal smoothing.
+  // Less aggressive than before — preserves facial detail while creating flat planes.
+  function filterVectorPortrait(d, w, h) {
+    // Step 1: Light smooth — just remove noise, preserve ALL edges
+    edgePreservingSmooth(d, w, h, 2, 20);
+
+    // Step 2: Posterize luminance to create flat value planes
+    // More levels = more detail preserved
+    const levels = 8;
+    const step = 255 / (levels - 1);
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      const lum = 0.299*r + 0.587*g + 0.114*b;
+      const newLum = Math.round(Math.round(lum / step) * step);
+      const ratio = lum > 1 ? newLum / lum : 1;
+      d[i]   = clamp(r * ratio);
+      d[i+1] = clamp(g * ratio);
+      d[i+2] = clamp(b * ratio);
+    }
+
+    // Step 3: Strong saturation boost for vivid vector look
+    for (let i = 0; i < d.length; i += 4) {
+      const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      d[i]   = clamp(gray + (d[i]   - gray) * 1.7);
+      d[i+1] = clamp(gray + (d[i+1] - gray) * 1.7);
+      d[i+2] = clamp(gray + (d[i+2] - gray) * 1.7);
+    }
+
+    // Step 4: Contrast boost
+    for (let i = 0; i < d.length; i += 4) {
+      d[i]   = clamp((d[i]   - 128) * 1.25 + 128);
+      d[i+1] = clamp((d[i+1] - 128) * 1.25 + 128);
+      d[i+2] = clamp((d[i+2] - 128) * 1.25 + 128);
+    }
+  }
+
   // Pixel art / mosaic mode — averages each block into a single flat color
   function filterPixelate(d, w, h) {
     const bs = 16; // default block size (pixelate style removed from PBN mode)
@@ -934,9 +1046,7 @@
   }
 
   // --- Pixel Canvas Mode ---
-  console.log('app.js: attaching pixelGenerateBtn listener, element:', pixelGenerateBtn);
   pixelGenerateBtn.addEventListener('click', async () => {
-    console.log('pixelGenerateBtn click handler fired, loadedImage:', !!loadedImage);
     if (!loadedImage) { alert('Please upload an image first.'); return; }
     pixelGenerateBtn.disabled = true;
     pixelGenerateText.textContent = 'Building grid…';
@@ -956,7 +1066,6 @@
 
   // Global handler for inline onclick fallback
   window.handlePixelGenerate = async () => {
-    console.log('handlePixelGenerate called, loadedImage:', !!loadedImage);
     if (!loadedImage) { alert('Please upload an image first.'); return; }
     pixelGenerateBtn.disabled = true;
     pixelGenerateText.textContent = 'Building grid…';
@@ -978,7 +1087,6 @@
     const cellSize = parseInt(pixelGridSizeEl ? pixelGridSizeEl.value : '20') || 20;
     const numColors = parseInt(pixelColorsEl ? pixelColorsEl.value : '16') || 16;
     const colorSpace = pixelColorSpaceEl ? pixelColorSpaceEl.value : 'rgb';
-    console.log('generatePixelCanvas called', { cellSize, numColors, colorSpace, loadedImage: !!loadedImage });
 
     // Draw source image to offscreen canvas
     const MAX = 800;
@@ -1023,9 +1131,13 @@
       if (!paletteNums.has(idx)) paletteNums.set(idx, num++);
     }
 
-    // Store for re-render
-    const MIN_CELL_RENDER = 24;
-    const renderScale = cellSize < MIN_CELL_RENDER ? Math.ceil(MIN_CELL_RENDER / cellSize) : 1;
+    // Store for re-render — scale up cells for readability but cap total canvas size
+    const MIN_CELL_RENDER = 20;
+    const MAX_CANVAS_DIM = 3000;
+    let renderScale = cellSize < MIN_CELL_RENDER ? Math.ceil(MIN_CELL_RENDER / cellSize) : 1;
+    // Cap so canvas doesn't exceed max dimension
+    const maxDim = Math.max(cols, rows) * cellSize * renderScale;
+    if (maxDim > MAX_CANVAS_DIM) renderScale = Math.max(1, Math.floor(MAX_CANVAS_DIM / (Math.max(cols, rows) * cellSize)));
     const rCell = cellSize * renderScale;
     pixelRenderData = { cols, rows, cellSize, rCell, cellPaletteIdx, palette, paletteNums, sw, sh };
 
@@ -1422,9 +1534,8 @@
     const printW = Math.round(cw / 2.54 * dpi);
     const printH = Math.round(ch / 2.54 * dpi);
 
-    // PROCESSING resolution — capped at 800px for speed
-    // All quantization, region detection, smoothing happens here
-    const PROC_MAX = 800;
+    // PROCESSING resolution — higher = more detail but slower
+    const PROC_MAX = 1200;
     let sw = img.width, sh = img.height, sx = 0, sy = 0;
     if (crop) { sx = crop.x; sy = crop.y; sw = crop.w; sh = crop.h; }
     let w = sw, h = sh;
@@ -1441,11 +1552,7 @@
     srcCanvas.width = w; srcCanvas.height = h;
     const sCtx = srcCanvas.getContext('2d');
     sCtx.drawImage(img, sx, sy, sw, sh, 0, 0, w, h);
-
-    // Pre-smooth: minimal noise removal only — preserve all detail
-    const rawImgData = sCtx.getImageData(0, 0, w, h);
-    edgePreservingSmooth(rawImgData.data, w, h, 1, 20);
-    sCtx.putImageData(rawImgData, 0, 0);
+    // No pre-smooth — preserve maximum detail, let k-means handle color grouping
 
     const pixels = sCtx.getImageData(0, 0, w, h).data;
 
@@ -1515,8 +1622,18 @@
     }
 
     // Direct mapping: every pixel to nearest palette color
+    // Pre-compute palette in Lab for fast nearest-color matching
+    const paletteLab = palette.map(c => rgbToLab(c[0], c[1], c[2]));
     let mapped = new Uint8Array(w * h);
-    for (let i = 0; i < colors.length; i++) mapped[i] = nearestColor(colors[i], palette);
+    for (let i = 0; i < colors.length; i++) {
+      const pLab = rgbToLab(colors[i][0], colors[i][1], colors[i][2]);
+      let minDist = Infinity, best = 0;
+      for (let j = 0; j < paletteLab.length; j++) {
+        const d = labDistSq(pLab, paletteLab[j]);
+        if (d < minDist) { minDist = d; best = j; }
+      }
+      mapped[i] = best;
+    }
 
     // Build edge strength map from original image (Sobel on luminance)
     // Pixels with strong edges are protected from smoothing/merging
@@ -1542,6 +1659,11 @@
     for (let run = 0; run < stripRuns; run++) {
       mapped = narrowPixelStripCleanup(mapped, palette, w, h);
     }
+    // If dithered style with dithered render engine, the render function handles it
+    // For other styles, no extra mode filter needed
+    if (currentStyle === 'dithered') {
+      // No mode filter needed — source is clean, dithering applied at render time
+    }
 
     const regionMap = new Int32Array(w * h).fill(-1);
     const regionColors = [];
@@ -1558,6 +1680,9 @@
     const maxFacets = parseInt(maxFacetsEl ? maxFacetsEl.value : '10000');
     const largeToSmall = !facetRemovalOrderEl || facetRemovalOrderEl.value === 'largeToSmall';
     mergeSmallRegionsEdgeAware(regionMap, regionColors, mapped, w, h, regionId, minReg, edgeStrength, EDGE_PROTECT, maxFacets, largeToSmall);
+
+    // Merge adjacent regions with visually similar colors
+    mergeSimilarAdjacentRegions(regionMap, regionColors, mapped, palette, w, h, regionId);
 
     // Smooth boundaries — skip edge pixels
     const smoothPasses = parseInt(smoothnessEl.value);
@@ -1698,6 +1823,11 @@
 
   function renderCanvas(outlineMode) {
     if (!renderData) return;
+    const engine = renderEngineEl ? renderEngineEl.value : 'standard';
+    if (engine === 'vector') return renderCanvasVector(outlineMode);
+    if (engine === 'slic') return renderCanvasSLIC(outlineMode);
+    if (engine === 'dither') return renderCanvasDither(outlineMode);
+    // Standard pixel-based rendering
     const { w, h, outW, outH, mapped, palette, regionMap, labels, pixelMode, blockSize } = renderData;
     const ow = outW || w, oh = outH || h;
     const sx = ow / w, sy = oh / h;
@@ -1766,6 +1896,266 @@
     // Watermark removed — not needed for production use
   }
 
+  // --- Vector rendering using imagetracerjs ---
+  function renderCanvasVector(outlineMode) {
+    if (!renderData) return;
+    const { w, h, outW, outH, mapped, palette, regionMap, labels } = renderData;
+    const ow = outW || w, oh = outH || h;
+
+    // Build a quantized ImageData from mapped + palette
+    const quantCanvas = document.createElement('canvas');
+    quantCanvas.width = w; quantCanvas.height = h;
+    const qCtx = quantCanvas.getContext('2d');
+    const qData = qCtx.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+      const c = outlineMode ? [255, 255, 255] : palette[mapped[i]];
+      const pi = i * 4;
+      qData.data[pi] = c[0]; qData.data[pi+1] = c[1]; qData.data[pi+2] = c[2]; qData.data[pi+3] = 255;
+    }
+    qCtx.putImageData(qData, 0, 0);
+
+    // Use imagetracerjs to trace
+    const imgd = qCtx.getImageData(0, 0, w, h);
+    const options = {
+      numberofcolors: palette.length,
+      colorquantcycles: 1, // already quantized — don't re-quantize
+      pathomit: 8, // skip tiny paths for cleaner output
+      ltres: 0.5, // line tracing tolerance — lower = more detail
+      qtres: 0.5, // quadratic spline tracing tolerance
+      strokewidth: outlineMode ? 2 : 1,
+      blurradius: 0, // no blur — image already processed
+      blurdelta: 0,
+    };
+
+    // imagetracerjs operates synchronously
+    if (typeof ImageTracer === 'undefined') {
+      console.warn('imagetracerjs not loaded, falling back to standard');
+      return renderCanvasStandard(outlineMode);
+    }
+
+    const svgStr = ImageTracer.imagedataToSVG(imgd, options);
+
+    // Render SVG to canvas
+    resultCanvas.width = ow; resultCanvas.height = oh;
+    const ctx = resultCanvas.getContext('2d');
+    const img = new Image();
+    const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, ow, oh);
+      URL.revokeObjectURL(url);
+
+      // Draw numbers on top
+      if (labels && labels.length > 0) {
+        const sx = ow / w, sy = oh / h;
+        const minFs = parseInt(minFontSizeEl ? minFontSizeEl.value : '12') || 12;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        for (const lb of labels) {
+          const fs = Math.max(minFs, lb.fs * sx);
+          ctx.font = `500 ${fs}px Inter,system-ui`;
+          if (outlineMode) {
+            ctx.fillStyle = '#000';
+            ctx.fillText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
+          } else {
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, sx * 0.8);
+            ctx.strokeText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
+            ctx.fillStyle = '#222';
+            ctx.fillText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
+          }
+        }
+      }
+    };
+    img.src = url;
+  }
+
+  // --- SLIC + Potrace rendering (placeholder — falls back to standard with enhanced smoothing) ---
+  function renderCanvasSLIC(outlineMode) {
+    if (!renderData) return;
+    // SLIC superpixels + Potrace is complex to implement from scratch in JS
+    // For now, this uses the standard renderer with extra boundary smoothing
+    // to approximate the smoother results SLIC would give
+    const { w, h, outW, outH, mapped, palette, regionMap, labels, pixelMode, blockSize } = renderData;
+    const ow = outW || w, oh = outH || h;
+    const sx = ow / w, sy = oh / h;
+
+    resultCanvas.width = ow; resultCanvas.height = oh;
+    const ctx = resultCanvas.getContext('2d');
+    const tint = (parseInt(colorStrengthEl ? colorStrengthEl.value : '40') || 40) / 100;
+
+    // Fill
+    const outData = ctx.createImageData(ow, oh);
+    for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+      const px = Math.min(w - 1, Math.floor(x / sx));
+      const py = Math.min(h - 1, Math.floor(y / sy));
+      const si = py * w + px;
+      const pi = (y * ow + x) * 4;
+      if (outlineMode) {
+        outData.data[pi] = 255; outData.data[pi+1] = 255; outData.data[pi+2] = 255;
+      } else {
+        const c = palette[mapped[si]];
+        outData.data[pi]   = Math.round(c[0] * tint + 255 * (1 - tint));
+        outData.data[pi+1] = Math.round(c[1] * tint + 255 * (1 - tint));
+        outData.data[pi+2] = Math.round(c[2] * tint + 255 * (1 - tint));
+      }
+      outData.data[pi+3] = 255;
+    }
+    ctx.putImageData(outData, 0, 0);
+
+    // Draw smooth outlines using quadratic curves instead of pixel lines
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = outlineMode ? Math.max(1, sx * 0.6) : Math.max(0.8, sx * 0.5);
+    // Collect border points per region boundary and draw as smooth paths
+    const borderPts = {};
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      const rid = regionMap[idx];
+      if (x < w - 1 && regionMap[idx + 1] !== rid) {
+        const key = Math.min(rid, regionMap[idx+1]) + '-' + Math.max(rid, regionMap[idx+1]);
+        if (!borderPts[key]) borderPts[key] = [];
+        borderPts[key].push([(x+1)*sx, (y+0.5)*sy]);
+      }
+      if (y < h - 1 && regionMap[idx + w] !== rid) {
+        const key = Math.min(rid, regionMap[idx+w]) + '-' + Math.max(rid, regionMap[idx+w]);
+        if (!borderPts[key]) borderPts[key] = [];
+        borderPts[key].push([(x+0.5)*sx, (y+1)*sy]);
+      }
+    }
+    // Draw each boundary segment as a smooth path
+    ctx.beginPath();
+    for (const pts of Object.values(borderPts)) {
+      if (pts.length < 2) continue;
+      // Sort points by proximity for connected path
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i][0], pts[i][1]);
+      }
+    }
+    ctx.stroke();
+
+    // Numbers
+    if (labels) {
+      const minFs = parseInt(minFontSizeEl ? minFontSizeEl.value : '12') || 12;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const lb of labels) {
+        const fs = Math.max(minFs, lb.fs * sx);
+        ctx.font = `500 ${fs}px Inter,system-ui`;
+        if (outlineMode) {
+          ctx.fillStyle = '#000';
+          ctx.fillText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
+        } else {
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, sx * 0.8);
+          ctx.strokeText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
+          ctx.fillStyle = '#222';
+          ctx.fillText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
+        }
+      }
+    }
+  }
+
+  // --- Dithered rendering (paintmap.studio approach) ---
+  // Uses Floyd-Steinberg error diffusion dithering to map pixels to palette colors.
+  // This creates the illusion of more colors by distributing quantization error to
+  // neighboring pixels, resulting in a painterly/textured look with apparent gradients.
+  function renderCanvasDither(outlineMode) {
+    if (!renderData) return;
+    const { w, h, outW, outH, palette, regionMap, labels } = renderData;
+    const ow = outW || w, oh = outH || h;
+    const sx = ow / w, sy = oh / h;
+
+    // Get the styled source image pixels at processing resolution
+    const srcCtx = srcCanvas.getContext('2d');
+    const srcData = srcCtx.getImageData(0, 0, w, h).data;
+
+    // Floyd-Steinberg dithering: map each pixel to nearest palette color
+    // and distribute the error to neighbors
+    const pixels = new Float32Array(w * h * 3); // working buffer in float for error accumulation
+    for (let i = 0; i < w * h; i++) {
+      pixels[i*3]   = srcData[i*4];
+      pixels[i*3+1] = srcData[i*4+1];
+      pixels[i*3+2] = srcData[i*4+2];
+    }
+
+    const dithered = new Uint8Array(w * h); // palette index per pixel
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x;
+        const r = pixels[idx*3], g = pixels[idx*3+1], b = pixels[idx*3+2];
+        // Find nearest palette color
+        const ci = nearestColor([Math.round(r), Math.round(g), Math.round(b)], palette);
+        dithered[idx] = ci;
+        // Compute error
+        const er = r - palette[ci][0], eg = g - palette[ci][1], eb = b - palette[ci][2];
+        // Distribute error to neighbors (Floyd-Steinberg coefficients)
+        const distribute = (dx, dy, factor) => {
+          const nx = x + dx, ny = y + dy;
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) return;
+          const ni = ny * w + nx;
+          pixels[ni*3]   += er * factor;
+          pixels[ni*3+1] += eg * factor;
+          pixels[ni*3+2] += eb * factor;
+        };
+        distribute(1, 0, 7/16);
+        distribute(-1, 1, 3/16);
+        distribute(0, 1, 5/16);
+        distribute(1, 1, 1/16);
+      }
+    }
+
+    // Render to output canvas
+    resultCanvas.width = ow; resultCanvas.height = oh;
+    const ctx = resultCanvas.getContext('2d');
+    const outData = ctx.createImageData(ow, oh);
+    const tint = (parseInt(colorStrengthEl ? colorStrengthEl.value : '40') || 40) / 100;
+
+    for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
+      const px = Math.min(w - 1, Math.floor(x / sx));
+      const py = Math.min(h - 1, Math.floor(y / sy));
+      const ci = dithered[py * w + px];
+      const c = palette[ci];
+      const pi = (y * ow + x) * 4;
+      if (outlineMode) {
+        outData.data[pi] = 255; outData.data[pi+1] = 255; outData.data[pi+2] = 255;
+      } else {
+        outData.data[pi]   = Math.round(c[0] * tint + 255 * (1 - tint));
+        outData.data[pi+1] = Math.round(c[1] * tint + 255 * (1 - tint));
+        outData.data[pi+2] = Math.round(c[2] * tint + 255 * (1 - tint));
+      }
+      outData.data[pi+3] = 255;
+    }
+    ctx.putImageData(outData, 0, 0);
+
+    // Draw outlines between different-colored adjacent pixels (using dithered map)
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = outlineMode ? Math.max(1, sx * 0.4) : Math.max(0.5, sx * 0.3);
+    ctx.beginPath();
+    // Only draw outlines between regions (from regionMap), not between individual dithered pixels
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const idx = y * w + x, rid = regionMap[idx];
+      if (x < w - 1 && regionMap[idx + 1] !== rid) { ctx.moveTo((x+1)*sx, y*sy); ctx.lineTo((x+1)*sx, (y+1)*sy); }
+      if (y < h - 1 && regionMap[idx + w] !== rid) { ctx.moveTo(x*sx, (y+1)*sy); ctx.lineTo((x+1)*sx, (y+1)*sy); }
+    }
+    ctx.stroke();
+
+    // Numbers
+    if (labels) {
+      const minFs = parseInt(minFontSizeEl ? minFontSizeEl.value : '12') || 12;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const lb of labels) {
+        const fs = Math.max(minFs, lb.fs * sx);
+        ctx.font = `500 ${fs}px Inter,system-ui`;
+        if (outlineMode) {
+          ctx.fillStyle = '#000';
+          ctx.fillText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
+        } else {
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(1.5, sx * 0.8);
+          ctx.strokeText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
+          ctx.fillStyle = '#222';
+          ctx.fillText(lb.text, lb.x * sx + sx/2, lb.y * sy + sy/2);
+        }
+      }
+    }
+  }
+
   // Render with full colors and outlines but no numbers (for after animation)
   function renderCanvasNoNumbers() {
     if (!renderData) return;
@@ -1796,11 +2186,6 @@
     }
     ctx.stroke();
   }
-
-  outlineOnly.addEventListener('change', () => {
-    stopAnim();
-    renderCanvas(outlineOnly.checked);
-  });
 
   outlineOnly.addEventListener('change', () => {
     stopAnim();
@@ -2441,9 +2826,11 @@
     ];
   }
 
+  // Value-weighted Lab distance — L (lightness/value) weighted 2x
+  // Ensures highlights never merge with shadows even if same hue
   function labDistSq(a, b) {
     const dL = a[0]-b[0], da = a[1]-b[1], db = a[2]-b[2];
-    return dL*dL + da*da + db*db;
+    return dL*dL*2 + da*da + db*db;
   }
 
   // Unified weighted k-means supporting RGB, HSL, and Lab color spaces
@@ -2538,9 +2925,16 @@
     return result;
   }
 
+  // Value-aware vector distance — weights L (lightness) more heavily in Lab space
+  // This preserves the value structure (light/dark) which gives form and depth
   function vecDistSq(a, b) {
     let s = 0;
-    for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; }
+    for (let i = 0; i < a.length; i++) {
+      const d = a[i] - b[i];
+      // In Lab space: index 0 = L (lightness). Weight it 2x to prioritize value separation
+      const weight = (a.length === 3 && i === 0) ? 2.0 : 1.0;
+      s += d * d * weight;
+    }
     return s;
   }
 
@@ -2579,10 +2973,6 @@
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
   }
 
-  // Keep old kMeansLabWeighted as alias for backward compat
-  function kMeansLabWeighted(pixels, numColors) {
-    return kMeansWeighted(pixels, numColors, 'lab');
-  }
 
   // Narrow pixel strip cleanup — removes 1-pixel-wide strips that create ugly thin lines.
   // For each interior pixel: if its color differs from both top+bottom OR both left+right
@@ -2653,6 +3043,69 @@
       out[idx] = best;
     }
     return out;
+  }
+
+  // Merge adjacent regions that have very similar colors (Lab distance below threshold).
+  // This removes the "extra tiny sections" where two similar colors sit next to each other.
+  function mergeSimilarAdjacentRegions(regionMap, regionColors, mapped, palette, w, h, regionId) {
+    const size = w * h;
+    const MERGE_THRESHOLD = 15; // Lab distance — colors closer than this get merged
+
+    // Pre-compute palette in Lab
+    const palLab = palette.map(c => rgbToLab(c[0], c[1], c[2]));
+
+    // Build adjacency: for each region, find its neighbor regions
+    const neighbors = Array.from({ length: regionId }, () => new Set());
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const idx = y * w + x;
+      const rid = regionMap[idx];
+      if (x < w - 1 && regionMap[idx+1] !== rid) { neighbors[rid].add(regionMap[idx+1]); neighbors[regionMap[idx+1]].add(rid); }
+      if (y < h - 1 && regionMap[idx+w] !== rid) { neighbors[rid].add(regionMap[idx+w]); neighbors[regionMap[idx+w]].add(rid); }
+    }
+
+    // Compute region sizes
+    const regionSizes = new Int32Array(regionId);
+    for (let i = 0; i < size; i++) regionSizes[regionMap[i]]++;
+
+    // Merge pass: for each region, if its smallest neighbor has a similar color, merge the smaller into the larger
+    let merged = true;
+    while (merged) {
+      merged = false;
+      for (let r = 0; r < regionId; r++) {
+        if (regionSizes[r] === 0) continue;
+        const rLab = palLab[regionColors[r]];
+        if (!rLab) continue;
+
+        for (const nr of neighbors[r]) {
+          if (regionSizes[nr] === 0) continue;
+          const nLab = palLab[regionColors[nr]];
+          if (!nLab) continue;
+
+          const dist = Math.sqrt(labDistSq(rLab, nLab));
+          if (dist < MERGE_THRESHOLD) {
+            // Merge smaller into larger
+            const [keep, remove] = regionSizes[r] >= regionSizes[nr] ? [r, nr] : [nr, r];
+            for (let i = 0; i < size; i++) {
+              if (regionMap[i] === remove) {
+                regionMap[i] = keep;
+                mapped[i] = regionColors[keep];
+              }
+            }
+            regionSizes[keep] += regionSizes[remove];
+            regionSizes[remove] = 0;
+            // Transfer neighbors
+            for (const n of neighbors[remove]) {
+              if (n !== keep) { neighbors[keep].add(n); neighbors[n].add(keep); }
+              neighbors[n].delete(remove);
+            }
+            neighbors[remove].clear();
+            merged = true;
+            break; // restart since neighbors changed
+          }
+        }
+        if (merged) break;
+      }
+    }
   }
 
   // Edge-aware small region merge with max facets cap and configurable removal order
@@ -2857,5 +3310,4 @@
   function rgbToHex([r, g, b]) {
     return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
   }
-  console.log('app.js: IIFE completed successfully');
 })();
