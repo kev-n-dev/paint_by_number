@@ -3,440 +3,219 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Paint by Number</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Paint by Number Studio</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app-shell">
+  <div class="app">
 
-    <!-- ── Left panel ── -->
-    <aside class="settings-panel">
-      <div class="panel-header">
-        <h1>🎨 Paint by Number</h1>
-        <div class="mode-switcher">
-          <button class="mode-btn active" id="modePbn">Paint by Number</button>
-          <button class="mode-btn" id="modePixel">Pixel Canvas</button>
-        </div>
+    <!-- Header / Toolbar -->
+    <header class="header">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/><circle cx="8.5" cy="7.5" r="1" fill="currentColor"/><circle cx="6.5" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="6" r="1" fill="currentColor"/><circle cx="16" cy="9" r="1" fill="currentColor"/></svg>
+        PBN Studio
       </div>
 
-      <!-- Upload (shared) -->
-      <div class="panel-section panel-upload">
-        <div class="upload-area-sm" id="dropZone">
+      <div class="toolbar">
+        <button class="btn-icon" id="newImageBtn" title="New Image">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
+        </button>
+      </div>
+
+      <div class="header-spacer"></div>
+
+      <div class="header-right">
+        <button class="btn btn-ghost btn-sm" id="saveDesignBtn">💾 Save</button>
+        <button class="btn btn-ghost btn-sm" id="myDesignsBtn">Gallery <span class="badge" id="designCount">0</span></button>
+      </div>
+    </header>
+
+    <!-- Main Canvas Viewport -->
+    <main class="canvas-viewport" id="canvasViewport">
+      <!-- Upload state -->
+      <div class="upload-state" id="uploadState">
+        <div class="dropzone" id="dropZone">
           <input type="file" id="imageInput" accept="image/*" hidden>
-          <div class="upload-placeholder" id="uploadPlaceholder">
-            <span class="upload-icon-sm">📁</span>
-            <label class="upload-link" for="imageInput">Upload image</label>
+          <div class="dropzone-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 5h6M19 2v6M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/><circle cx="9" cy="9" r="2"/></svg>
           </div>
-          <div class="upload-preview-sm" id="uploadPreview" hidden>
-            <img id="previewImg" alt="Preview">
-            <button class="remove-btn-sm" id="removeBtn" aria-label="Remove image">✕</button>
+          <p class="dropzone-title">Drop image here</p>
+          <p class="dropzone-sub">or <label class="dropzone-link" for="imageInput">browse files</label></p>
+          <p class="dropzone-hint">JPEG · PNG · WEBP</p>
+        </div>
+      </div>
+
+      <!-- Result views (hidden until generated) -->
+      <div class="comparison-container" id="comparisonContainer" hidden>
+        <div class="comparison-slider" id="comparisonSlider">
+          <canvas id="resultCanvasAfter" class="comparison-layer"></canvas>
+          <div class="comparison-clip" id="comparisonClip">
+            <canvas id="resultCanvasBefore" class="comparison-layer"></canvas>
+          </div>
+          <div class="comparison-handle" id="comparisonHandle">
+            <div class="comparison-line"></div>
+            <div class="comparison-knob">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="m15 18-6-6 6-6"/></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="m9 18 6-6-6-6"/></svg>
+            </div>
+          </div>
+          <div class="comparison-labels">
+            <span>Original</span>
+            <span>Result</span>
           </div>
         </div>
       </div>
 
-      <!-- ── PBN settings ── -->
-      <div id="pbnSettings">
+      <div class="single-view" id="singleView" hidden>
+        <canvas id="filledCanvas"></canvas>
+        <canvas id="outlineCanvas" hidden></canvas>
+        <canvas id="paletteCanvas" hidden></canvas>
+      </div>
 
-        <!-- Quick presets -->
-        <div class="panel-section">
-          <h2 class="panel-section-title">Quick Start</h2>
-          <div class="preset-btns">
-            <button class="preset-btn" data-preset="easy">Easy<br><span>Few colors, big regions</span></button>
-            <button class="preset-btn active" data-preset="medium">Medium<br><span>Balanced detail</span></button>
-            <button class="preset-btn" data-preset="hard">Hard<br><span>More detail, smaller regions</span></button>
+      <!-- Processing overlay -->
+      <div class="processing-overlay" id="processingOverlay" hidden>
+        <div class="processing-preview-wrap">
+          <canvas id="processingCanvas"></canvas>
+        </div>
+        <div class="progress-info">
+          <p class="processing-label" id="processingLabel">Processing...</p>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
           </div>
+          <p class="processing-percent" id="processingPercent">0%</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Panel -->
+    <aside class="panel" id="rightPanel">
+      <!-- View Tabs -->
+      <div class="tab-bar" id="viewTabs">
+        <button class="tab active" data-view="comparison">Compare</button>
+        <button class="tab" data-view="filled">Filled</button>
+        <button class="tab" data-view="outline">Outline</button>
+        <button class="tab" data-view="palette">Colors</button>
+      </div>
+
+      <!-- Settings -->
+      <div class="panel-section">
+        <div class="panel-section-header">
+          <span class="panel-section-title">Settings</span>
         </div>
 
-        <!-- Style picker -->
-        <div class="panel-section">
-          <h2 class="panel-section-title">Style</h2>
-          <div class="style-grid" id="styleGrid">
-            <button class="style-card active" data-style="none"><span class="style-icon">🚫</span><span>None</span></button>
-            <button class="style-card" data-style="realistic"><span class="style-icon">📷</span><span>Realistic</span></button>
-            <button class="style-card" data-style="watercolor"><span class="style-icon">💧</span><span>Watercolor</span></button>
-            <button class="style-card" data-style="cartoon"><span class="style-icon">✏️</span><span>Cartoon</span></button>
-            <button class="style-card" data-style="posterize"><span class="style-icon">🎭</span><span>Pop Art</span></button>
-            <button class="style-card" data-style="softpastel"><span class="style-icon">🌸</span><span>Pastel</span></button>
-            <button class="style-card" data-style="oilpaint"><span class="style-icon">🖌️</span><span>Oil Paint</span></button>
-            <button class="style-card" data-style="oilpaint2"><span class="style-icon">🎨</span><span>Oil Paint 2</span></button>
-            <button class="style-card" data-style="posterize2"><span class="style-icon">🟥</span><span>Posterize</span></button>
-            <button class="style-card" data-style="dithered"><span class="style-icon">▓</span><span>Dithered</span></button>
-            <button class="style-card" data-style="vectorportrait"><span class="style-icon">👤</span><span>Vector Portrait</span></button>
-          </div>
-          <div class="control-group" id="posterizeLevelsWrap" hidden>
-            <label for="posterizeLevels">Levels</label>
-            <div class="range-wrap">
-              <input type="range" id="posterizeLevels" min="2" max="16" step="1" value="6">
-              <span class="range-val" id="posterizeLevelsVal">6</span>
-            </div>
-          </div>
+        <div class="control-row">
+          <span class="control-label">Colors</span>
+        </div>
+        <div class="color-presets">
+          <button class="color-preset active" data-colors="24">
+            <strong>24</strong>
+            <span>Beginner</span>
+          </button>
+          <button class="color-preset" data-colors="36">
+            <strong>36</strong>
+            <span>+5hrs</span>
+          </button>
+          <button class="color-preset" data-colors="48">
+            <strong>48</strong>
+            <span>+10hrs</span>
+          </button>
+        </div>
+        <input type="range" id="colorSlider" min="6" max="60" step="1" value="24">
+        <div class="control-row">
+          <span class="control-label" style="font-size:10px;color:var(--text-muted)">or drag for custom</span>
+          <span class="control-value" id="colorCountValue">24</span>
         </div>
 
-        <!-- Main controls -->
-        <div class="panel-section">
-          <h2 class="panel-section-title">Settings</h2>
-          <div class="control-group">
-            <label for="colorCount">Colors</label>
-            <div class="range-wrap">
-              <input type="range" id="colorCount" min="2" max="64" value="16">
-              <span class="range-val" id="colorCountVal">16</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="renderEngine">Render Quality</label>
-            <select id="renderEngine" class="select-input">
-              <option value="standard" selected>Standard</option>
-              <option value="vector">Vector (smooth borders)</option>
-              <option value="slic">Enhanced (smoother)</option>
-              <option value="dither">Dithered (textured)</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="pageSize">Print Size</label>
-            <select id="pageSize" class="select-input">
-              <option value="custom">Custom</option>
-              <option value="4x6">4×6 Photo</option>
-              <option value="5x7">5×7 Photo</option>
-              <option value="a5">A5</option>
-              <option value="letter" selected>Letter (8.5×11")</option>
-              <option value="a4">A4</option>
-              <option value="a3">A3</option>
-              <option value="a2">A2</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="printDpi">Print Quality <span id="detailAuto" class="detail-auto"></span></label>
-            <select id="printDpi" class="select-input">
-              <option value="150">Good (150 DPI)</option>
-              <option value="300" selected>Great (300 DPI)</option>
-              <option value="600">Best (600 DPI)</option>
-            </select>
-          </div>
+        <div class="control-row">
+          <span class="control-label">Detail</span>
+          <span class="control-value" id="smoothValue">3</span>
         </div>
+        <input type="range" id="smoothSlider" min="1" max="8" step="1" value="3">
 
-        <!-- Advanced: Image -->
-        <details class="panel-section collapsible">
-          <summary class="panel-section-title">Image Adjustments ▾</summary>
-          <div class="control-group">
-            <label for="simplify">Simplify</label>
-            <div class="range-wrap">
-              <input type="range" id="simplify" min="0" max="10" step="1" value="0">
-              <span class="range-val" id="simplifyVal">Off</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="sharpness">Sharpness</label>
-            <div class="range-wrap">
-              <input type="range" id="sharpness" min="0" max="200" step="10" value="60">
-              <span class="range-val" id="sharpnessVal">60%</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="structure">Structure</label>
-            <div class="range-wrap">
-              <input type="range" id="structure" min="0" max="200" step="10" value="20">
-              <span class="range-val" id="structureVal">20%</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="brightness">Brightness</label>
-            <div class="range-wrap">
-              <input type="range" id="brightness" min="-100" max="100" step="5" value="5">
-              <span class="range-val" id="brightnessVal">5</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="contrast">Contrast</label>
-            <div class="range-wrap">
-              <input type="range" id="contrast" min="-100" max="100" step="5" value="15">
-              <span class="range-val" id="contrastVal">15</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="saturation">Saturation</label>
-            <div class="range-wrap">
-              <input type="range" id="saturation" min="-100" max="100" step="5" value="10">
-              <span class="range-val" id="saturationVal">10</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="warmth">Warmth</label>
-            <div class="range-wrap">
-              <input type="range" id="warmth" min="-100" max="100" step="5" value="0">
-              <span class="range-val" id="warmthVal">0</span>
-            </div>
-          </div>
-          <label class="toggle-label">
-            <input type="checkbox" id="cartoonOutlines">
-            <span>Cartoon outlines</span>
-          </label>
-        </details>
-
-        <!-- Advanced: Algorithm -->
-        <details class="panel-section collapsible">
-          <summary class="panel-section-title">Advanced ▾</summary>
-          <div class="control-group">
-            <label>Canvas (cm)</label>
-            <div class="dim-row">
-              <input type="number" id="canvasW" class="dim-input" value="21" min="1" max="200" placeholder="W">
-              <span class="dim-sep">×</span>
-              <input type="number" id="canvasH" class="dim-input" value="29.7" min="1" max="200" placeholder="H">
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="colorStrength">Color Tint</label>
-            <div class="range-wrap">
-              <input type="range" id="colorStrength" min="10" max="100" step="5" value="40">
-              <span class="range-val" id="colorStrengthVal">40%</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="minFontSize">Number Size</label>
-            <div class="range-wrap">
-              <input type="range" id="minFontSize" min="6" max="24" step="1" value="12">
-              <span class="range-val" id="minFontSizeVal">12</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="clusterPrecision">Precision</label>
-            <div class="range-wrap">
-              <input type="range" id="clusterPrecision" min="0.1" max="10" step="0.1" value="1">
-              <span class="range-val" id="clusterPrecisionVal">1.0</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="colorSpace">Color Space</label>
-            <select id="colorSpace" class="select-input">
-              <option value="rgb">RGB</option>
-              <option value="hsl">HSL</option>
-              <option value="lab" selected>Lab</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="narrowStripRuns">Strip Cleanup</label>
-            <div class="range-wrap">
-              <input type="range" id="narrowStripRuns" min="0" max="10" step="1" value="3">
-              <span class="range-val" id="narrowStripRunsVal">3</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="minRegionSize">Min Region</label>
-            <div class="range-wrap">
-              <input type="range" id="minRegionSize" min="1" max="200" step="1" value="20">
-              <span class="range-val" id="minRegionVal">20px</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="maxFacets">Max Regions</label>
-            <div class="range-wrap">
-              <input type="range" id="maxFacets" min="100" max="50000" step="100" value="10000">
-              <span class="range-val" id="maxFacetsVal">10000</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="facetRemovalOrder">Merge Order</label>
-            <select id="facetRemovalOrder" class="select-input">
-              <option value="largeToSmall" selected>Large → Small</option>
-              <option value="smallToLarge">Small → Large</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="smoothness">Border Smoothing</label>
-            <div class="range-wrap">
-              <input type="range" id="smoothness" min="0" max="5" step="1" value="2">
-              <span class="range-val" id="smoothnessVal">2</span>
-            </div>
-          </div>
-        </details>
-
-        <!-- Palette -->
-        <div class="panel-section">
-          <h2 class="panel-section-title">Palette</h2>
-          <label class="toggle-label">
-            <input type="checkbox" id="useCustomPalette">
-            <span>Use my paints</span>
-          </label>
-          <div class="custom-palette" id="customPaletteUI" hidden>
-            <div class="palette-picker-row">
-              <select id="paletteSelect" aria-label="Select palette"></select>
-              <button class="btn btn-ghost btn-sm" id="newPaletteBtn">＋ New</button>
-              <button class="btn btn-ghost btn-sm" id="loadPresetBtn">📦 Presets</button>
-              <button class="btn btn-ghost btn-sm" id="renamePaletteBtn">✎</button>
-              <button class="btn btn-ghost btn-sm btn-danger-text" id="deletePaletteBtn">🗑</button>
-            </div>
-            <div class="palette-add-row">
-              <input type="color" id="paintColorPicker" value="#e63946">
-              <input type="text" id="paintNameInput" class="paint-name-input" placeholder="Color name (optional)">
-              <button class="btn btn-primary btn-sm" id="addPaintBtn">Add</button>
-            </div>
-            <div class="paint-chips" id="paintChips"></div>
-            <label class="toggle-label">
-              <input type="checkbox" id="allowMixing" checked>
-              <span>Allow color mixing</span>
-            </label>
-            <p class="palette-hint" id="paletteHint">Add at least 2 colors.</p>
-          </div>
+        <div class="control-row">
+          <span class="control-label">Min Region</span>
+          <span class="control-value" id="minRegionValue">60</span>
         </div>
+        <input type="range" id="minRegionSlider" min="20" max="300" step="10" value="60">
 
-        <button class="btn btn-primary btn-generate" id="generateBtn" disabled>
-          <span id="generateText">🎨 Apply</span>
-          <span id="generateSpinner" class="spinner" hidden>
-            <span class="spinner-brush">🖌️</span>
-          </span>
+        <div class="control-row">
+          <span class="control-label">Width</span>
+          <span class="control-value" id="widthValue">1000</span>
+        </div>
+        <input type="range" id="widthSlider" min="600" max="2000" step="50" value="1000">
+
+        <div class="control-row" style="margin-top:8px">
+          <span class="control-label">Color Space</span>
+        </div>
+        <select id="colorSpaceSelect" class="select-input">
+          <option value="lab" selected>CIE Lab (perceptual)</option>
+          <option value="rgb">RGB (fast)</option>
+        </select>
+      </div>
+
+      <!-- Generate Button -->
+      <div class="panel-section">
+        <button class="btn btn-primary btn-full btn-lg" id="generateBtn" disabled>
+          <span id="generateText">Generate</span>
+          <span id="generateSpinner" class="btn-spinner" hidden></span>
         </button>
       </div>
 
-      <!-- ── Pixel Canvas settings ── -->
-      <div id="pixelSettings" hidden>
-        <div class="panel-section">
-          <h2 class="panel-section-title">Grid</h2>
-          <div class="control-group">
-            <label for="pixelGridSize">Cell Size (px)</label>
-            <div class="range-wrap">
-              <input type="range" id="pixelGridSize" min="4" max="80" step="2" value="20">
-              <span class="range-val" id="pixelGridSizeVal">20px</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="pixelColors">Colors</label>
-            <div class="range-wrap">
-              <input type="range" id="pixelColors" min="2" max="64" value="16">
-              <span class="range-val" id="pixelColorsVal">16</span>
-            </div>
-          </div>
-          <div class="control-group">
-            <label for="pixelColorSpace">Color Space</label>
-            <select id="pixelColorSpace" class="select-input">
-              <option value="rgb" selected>RGB</option>
-              <option value="lab">Lab</option>
-            </select>
-          </div>
+      <!-- Stats -->
+      <div class="panel-section" id="statsSection" hidden>
+        <div class="panel-section-header">
+          <span class="panel-section-title">Output</span>
         </div>
-        <div class="panel-section">
-          <h2 class="panel-section-title">Print</h2>
-          <div class="control-group">
-            <label for="pixelPageSize">Print Size</label>
-            <select id="pixelPageSize" class="select-input">
-              <option value="letter" selected>Letter (8.5×11")</option>
-              <option value="a4">A4 (210×297mm)</option>
-              <option value="a3">A3 (297×420mm)</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="pixelColorStrength">Color Tint Strength</label>
-            <div class="range-wrap">
-              <input type="range" id="pixelColorStrength" min="10" max="100" step="5" value="40">
-              <span class="range-val" id="pixelColorStrengthVal">40%</span>
-            </div>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-generate" id="pixelGenerateBtn" disabled onclick="if(window.handlePixelGenerate) window.handlePixelGenerate();">
-          <span id="pixelGenerateText">🔲 Generate Grid</span>
-          <span id="pixelGenerateSpinner" class="spinner" hidden>
-            <span class="spinner-brush">🖌️</span>
-          </span>
-        </button>
+        <div id="statsBar" style="font-size:11px; color:var(--text-secondary); display:flex; flex-direction:column; gap:4px;"></div>
       </div>
 
+      <!-- Export -->
+      <div class="panel-section" id="exportSection" hidden>
+        <div class="panel-section-header">
+          <span class="panel-section-title">Export</span>
+        </div>
+        <div class="export-buttons">
+          <button class="btn btn-secondary btn-full" id="dlOutlineBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Outline + Numbers
+          </button>
+          <button class="btn btn-secondary btn-full" id="dlOutlineColorBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Outline + Numbers + Light Color
+          </button>
+          <button class="btn btn-secondary btn-full" id="dlPaletteBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+            Color Palette
+          </button>
+          <button class="btn btn-secondary btn-full" id="dlFilledBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+            Finished Painting
+          </button>
+          <button class="btn btn-secondary btn-full" id="dlFilledOutlineBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+            Finished + Outline (no numbers)
+          </button>
+          <div style="border-top:1px solid var(--border); margin:6px 0;"></div>
+          <button class="btn btn-primary btn-full" id="dlPdfBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
+            Download PDF (3 pages)
+          </button>
+        </div>
+      </div>
     </aside>
 
-    <!-- ── Right panel ── -->
-    <main class="main-panel">
-      <div class="canvas-col">
-
-        <!-- Style preview -->
-        <section class="card upload-card" id="stylePreviewCard" hidden>
-          <div class="style-preview-wrap" id="stylePreviewSection">
-            <canvas id="stylePreviewCanvas"></canvas>
-          </div>
-        </section>
-
-        <!-- PBN Result -->
-        <section class="card result-card" id="output" hidden>
-          <div class="difficulty-bar" id="difficultyBar"></div>
-          <div class="output-toolbar">
-            <button class="btn btn-primary" id="downloadBtn">⬇ PNG</button>
-            <button class="btn btn-primary" id="downloadPdfBtn">⬇ PDF</button>
-            <button class="btn btn-ghost" id="downloadLegendBtn">🏷️ Legend</button>
-            <button class="btn btn-ghost" id="downloadPaintListBtn">📋 Paint List</button>
-            <button class="btn btn-accent" id="previewAnimBtn">▶ Preview</button>
-            <button class="btn btn-ghost" id="zoomInBtn">＋</button>
-            <button class="btn btn-ghost" id="zoomOutBtn">－</button>
-            <button class="btn btn-ghost" id="zoomResetBtn">Fit</button>
-            <label class="toggle-label">
-              <input type="checkbox" id="outlineOnly">
-              <span>Outline only</span>
-            </label>
-          </div>
-          <div class="compare-wrap" id="compareWrap" hidden>
-            <canvas id="compareCanvas"></canvas>
-            <div class="compare-slider" id="compareSlider"></div>
-            <div class="compare-label compare-label-left">Original</div>
-            <div class="compare-label compare-label-right">Paint by Number</div>
-          </div>
-          <div class="compare-toggle">
-            <button class="btn btn-ghost btn-sm" id="toggleCompare">👁️ Before / After</button>
-          </div>
-          <div class="result-viewport" id="resultViewport">
-            <canvas id="resultCanvas"></canvas>
-          </div>
-        </section>
-
-        <!-- Pixel Canvas Result -->
-        <section class="card result-card" id="pixelOutput" hidden>
-          <div class="output-toolbar">
-            <button class="btn btn-primary" id="pixelDownloadBtn">⬇ PNG</button>
-            <button class="btn btn-primary" id="pixelDownloadPdfBtn">⬇ PDF</button>
-            <button class="btn btn-accent" id="pixelPreviewBtn">▶ Preview Paint</button>
-            <button class="btn btn-ghost" id="pixelZoomInBtn">＋</button>
-            <button class="btn btn-ghost" id="pixelZoomOutBtn">－</button>
-            <button class="btn btn-ghost" id="pixelZoomResetBtn">Fit</button>
-            <label class="toggle-label">
-              <input type="checkbox" id="pixelOutlineOnly">
-              <span>Outline only</span>
-            </label>
-          </div>
-          <div class="result-viewport" id="pixelViewport">
-            <canvas id="pixelCanvas"></canvas>
-          </div>
-        </section>
-
+    <!-- My Designs Modal -->
+    <div class="modal-backdrop" id="designsModal" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h3>Gallery</h3>
+          <button class="btn btn-ghost btn-sm" id="closeModal">✕</button>
+        </div>
+        <div class="modal-body" id="designsGrid"></div>
       </div>
+    </div>
 
-      <!-- Info sidebar (shared) -->
-      <aside class="info-aside card" id="infoAside" hidden>
-        <!-- PBN info -->
-        <div id="pbnInfo">
-          <div id="legend" class="legend legend-aside"></div>
-          <div id="coverageTable" class="coverage-table"></div>
-          <div id="orderSummary" hidden>
-            <h3 class="aside-title">📦 Order Summary</h3>
-            <div id="orderContent"></div>
-          </div>
-        </div>
-        <!-- Pixel info -->
-        <div id="pixelInfo" hidden>
-          <div id="pixelLegend" class="legend legend-aside"></div>
-          <div id="pixelCoverageTable" class="coverage-table"></div>
-        </div>
-      </aside>
-
-    </main>
   </div>
-  <canvas id="srcCanvas" hidden></canvas>
-  <script src="https://unpkg.com/imagetracerjs@1.2.6/imagetracer_v1.2.6.js"></script>
-  <script>
-    window.onerror = function(msg, src, line, col, err) {
-      console.error('GLOBAL ERROR:', msg, 'at line', line, err);
-      return false;
-    };
-    window.onunhandledrejection = function(e) {
-      console.error('UNHANDLED PROMISE:', e.reason);
-    };
-  </script>
   <script src="app.js"></script>
 </body>
 </html>
