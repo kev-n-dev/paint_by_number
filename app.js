@@ -83,6 +83,8 @@
 
   // --- Upload ---
   dropZone.addEventListener('click', e => {
+    // Don't double-trigger if clicking the label (it already opens the input)
+    if (e.target.tagName === 'LABEL' || e.target.closest('label')) return;
     imageInput.click();
   });
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
