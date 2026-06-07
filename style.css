@@ -693,6 +693,73 @@ input[type="range"]:focus::-webkit-slider-thumb {
   opacity: 0.7;
 }
 
+/* ===== LOCK SCREEN ===== */
+.lock-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-app);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.lock-screen[hidden] { display: none; }
+.lock-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px 36px;
+  text-align: center;
+  width: 300px;
+  box-shadow: var(--shadow-lg);
+}
+.lock-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+  background: #e0e0e0;
+  padding: 12px;
+  object-fit: contain;
+  overflow: visible;
+}
+.lock-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+}
+.lock-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+.pin-input-wrap {
+  margin-bottom: 12px;
+}
+.pin-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-bright);
+  font-size: 20px;
+  text-align: center;
+  letter-spacing: 8px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+.pin-input:focus {
+  border-color: var(--accent);
+}
+.lock-error {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--error);
+}
+.lock-error[hidden] { display: none; }
+
 /* ===== SCROLLBAR ===== */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

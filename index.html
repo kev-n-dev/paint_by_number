@@ -7,7 +7,21 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
+  <!-- Lock Screen -->
+  <div class="lock-screen" id="lockScreen">
+    <div class="lock-card">
+      <img src="logo-icon.png" alt="Pixel Haven" class="lock-logo">
+      <h2 class="lock-title">Pixel Haven</h2>
+      <p class="lock-sub">Enter PIN to continue</p>
+      <div class="pin-input-wrap">
+        <input type="password" id="pinInput" class="pin-input" maxlength="8" placeholder="····" autocomplete="off" inputmode="numeric">
+      </div>
+      <button class="btn btn-primary btn-full" id="pinSubmit">Unlock</button>
+      <p class="lock-error" id="lockError" hidden>Incorrect PIN</p>
+    </div>
+  </div>
+
+  <div class="app" id="mainApp" hidden>
 
     <!-- Header / Toolbar -->
     <header class="header">
@@ -216,6 +230,45 @@
     </div>
 
   </div>
+  <script>
+    // PIN auth gate with SHA-256 hashing
+    (function() {
+      const HASH = 'e206dd002a594e557800e0de38fbbaf0e371a2604b75c85fd4afb57138851e2c';
+      const SESSION_KEY = 'ph_auth';
+
+      async function sha256(str) {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+        return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+
+      function unlock() {
+        document.getElementById('lockScreen').hidden = true;
+        document.getElementById('mainApp').hidden = false;
+        sessionStorage.setItem(SESSION_KEY, '1');
+      }
+
+      // Check if already authenticated this session
+      if (sessionStorage.getItem(SESSION_KEY) === '1') {
+        unlock();
+      }
+
+      document.getElementById('pinSubmit').addEventListener('click', async () => {
+        const pin = document.getElementById('pinInput').value;
+        const hash = await sha256(pin);
+        if (hash === HASH) {
+          unlock();
+        } else {
+          document.getElementById('lockError').hidden = false;
+          document.getElementById('pinInput').value = '';
+          document.getElementById('pinInput').focus();
+        }
+      });
+
+      document.getElementById('pinInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('pinSubmit').click();
+      });
+    })();
+  </script>
   <script src="app.js"></script>
 </body>
 </html>
