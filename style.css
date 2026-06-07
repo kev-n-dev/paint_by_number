@@ -77,8 +77,21 @@ body {
   color: var(--text-bright);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   white-space: nowrap;
+}
+.logo-img {
+  height: 28px;
+  width: auto;
+  border-radius: 3px;
+}
+.logo-text {
+  font-size: 14px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #f5c842, #f5a623);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 .logo svg { width: 18px; height: 18px; }
 .toolbar {

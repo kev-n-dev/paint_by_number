@@ -859,8 +859,440 @@
     return canvas;
   }
 
-  // PDF generation (actual PDF with 3 pages)
-  function generatePDF() {
+  // ===== PAINT SETS & MIXING =====
+  const PAINT_SETS = {
+    'Acrylic Basic': [
+      { name: 'Titanium White',  rgb: [255, 255, 255] },
+      { name: 'Scarlet',         rgb: [255, 36, 0] },
+      { name: 'Cerulean Blue',   rgb: [0, 123, 167] },
+      { name: 'Sap Green',       rgb: [80, 125, 42] },
+      { name: 'Lemon Yellow',    rgb: [255, 247, 0] },
+      { name: 'Lamp Black',      rgb: [20, 20, 20] },
+      { name: 'Burnt Sienna',    rgb: [138, 72, 51] },
+      { name: 'Burnt Umber',     rgb: [101, 67, 33] },
+      { name: 'Deep Blue',       rgb: [0, 47, 108] },
+      { name: 'Deep Green',      rgb: [0, 73, 53] },
+      { name: 'Crimson Red',     rgb: [153, 0, 51] },
+      { name: 'Medium Yellow',   rgb: [255, 204, 0] },
+    ]
+  };
+
+  // Color name lookup — art/paint-oriented names
+  const COLOR_NAMES = [
+    ['#FFFFFF','White'],['#000000','Black'],['#FF0000','Red'],['#00FF00','Green'],['#0000FF','Blue'],
+    ['#FFFF00','Yellow'],['#FF00FF','Magenta'],['#00FFFF','Cyan'],['#FFA500','Orange'],['#800080','Purple'],
+    ['#FFC0CB','Pink'],['#A52A2A','Brown'],['#808080','Grey'],['#C0C0C0','Silver'],['#FFD700','Gold'],
+    ['#F5F5DC','Beige'],['#FFFFF0','Ivory'],['#F0E68C','Khaki'],['#E6E6FA','Lavender'],['#FFF0F5','Blush'],
+    ['#FAEBD7','Antique White'],['#D2691E','Chocolate'],['#8B4513','Saddle Brown'],['#DEB887','Burlywood'],
+    ['#F4A460','Sandy Brown'],['#CD853F','Peru'],['#D2B48C','Tan'],['#BC8F8F','Rosy Brown'],
+    ['#FFE4C4','Bisque'],['#FFDEAD','Navajo White'],['#FFE4B5','Moccasin'],['#FFF8DC','Cornsilk'],
+    ['#FFFACD','Lemon Chiffon'],['#FAFAD2','Light Goldenrod'],['#EEE8AA','Pale Goldenrod'],
+    ['#BDB76B','Dark Khaki'],['#DAA520','Goldenrod'],['#B8860B','Dark Goldenrod'],
+    ['#FF6347','Tomato'],['#FF4500','Orange Red'],['#FF8C00','Dark Orange'],['#FFA07A','Light Salmon'],
+    ['#FA8072','Salmon'],['#E9967A','Dark Salmon'],['#F08080','Light Coral'],['#CD5C5C','Indian Red'],
+    ['#DC143C','Crimson'],['#B22222','Firebrick'],['#8B0000','Dark Red'],['#FF69B4','Hot Pink'],
+    ['#FF1493','Deep Pink'],['#DB7093','Pale Violet Red'],['#C71585','Medium Violet Red'],
+    ['#800000','Maroon'],['#A0522D','Sienna'],['#D2691E','Cocoa'],['#F5DEB3','Wheat'],
+    ['#4B0082','Indigo'],['#8A2BE2','Blue Violet'],['#9400D3','Dark Violet'],['#9932CC','Dark Orchid'],
+    ['#BA55D3','Medium Orchid'],['#DDA0DD','Plum'],['#EE82EE','Violet'],['#DA70D6','Orchid'],
+    ['#FF00FF','Fuchsia'],['#D8BFD8','Thistle'],
+    ['#000080','Navy'],['#00008B','Dark Blue'],['#0000CD','Medium Blue'],['#4169E1','Royal Blue'],
+    ['#1E90FF','Dodger Blue'],['#6495ED','Cornflower Blue'],['#87CEEB','Sky Blue'],
+    ['#87CEFA','Light Sky Blue'],['#ADD8E6','Light Blue'],['#B0E0E6','Powder Blue'],
+    ['#4682B4','Steel Blue'],['#5F9EA0','Cadet Blue'],['#008B8B','Dark Cyan'],['#20B2AA','Light Sea Green'],
+    ['#008080','Teal'],['#48D1CC','Medium Turquoise'],['#40E0D0','Turquoise'],['#7FFFD4','Aquamarine'],
+    ['#006400','Dark Green'],['#228B22','Forest Green'],['#32CD32','Lime Green'],['#90EE90','Light Green'],
+    ['#00FA9A','Medium Spring Green'],['#3CB371','Medium Sea Green'],['#2E8B57','Sea Green'],
+    ['#6B8E23','Olive Drab'],['#808000','Olive'],['#556B2F','Dark Olive Green'],['#66CDAA','Medium Aquamarine'],
+    ['#8FBC8F','Dark Sea Green'],['#ADFF2F','Green Yellow'],['#7CFC00','Lawn Green'],
+    ['#9ACD32','Yellow Green'],['#006400','Hunter Green'],['#355E3B','Pine Green'],
+    ['#2F4F4F','Dark Slate Grey'],['#708090','Slate Grey'],['#778899','Light Slate Grey'],
+    ['#696969','Dim Grey'],['#A9A9A9','Dark Grey'],['#D3D3D3','Light Grey'],['#DCDCDC','Gainsboro'],
+    ['#F5F5F5','White Smoke'],['#F0FFF0','Honeydew'],['#F0FFFF','Azure'],['#FFF5EE','Seashell'],
+    ['#F5FFFA','Mint Cream'],['#FFFAF0','Floral White'],['#FAF0E6','Linen'],['#FDF5E6','Old Lace'],
+    ['#FFE4E1','Misty Rose'],['#FFEFD5','Papaya Whip'],['#FFF0F5','Lavender Blush'],
+    ['#E0B0FF','Mauve'],['#CC8899','Dusty Rose'],['#C9A0DC','Wisteria'],['#ACE5EE','Pale Blue'],
+    ['#98FB98','Pale Green'],['#FFBF00','Amber'],['#E2725B','Terracotta'],['#CB4154','Brick Red'],
+    ['#536878','Dark Electric Blue'],['#36454F','Charcoal'],['#E1AD21','Mustard'],
+    ['#3D0C02','Black Bean'],['#480607','Dark Sienna'],['#704214','Sepia'],['#C19A6B','Camel'],
+    ['#EDC9AF','Desert Sand'],['#C2B280','Sand'],['#967117','Sandy Taupe'],['#483C32','Taupe'],
+    ['#614051','Eggplant'],['#722F37','Wine'],['#4A0100','Dark Burgundy'],['#900020','Burgundy'],
+    ['#F28500','Tangerine'],['#FF7F50','Coral'],['#E34234','Vermilion'],['#CC5500','Burnt Orange'],
+    ['#997A8D','Mountbatten Pink'],['#B0C4DE','Light Steel Blue'],['#CCCCFF','Periwinkle'],
+    ['#C8A2C8','Lilac'],['#E0218A','Barbie Pink'],['#FF007F','Rose'],['#7B3F00','Chocolate Brown'],
+  ];
+
+  function getColorName(r, g, b) {
+    const targetLab = rgbToLab(r, g, b);
+    let bestName = 'Unknown';
+    let bestDist = Infinity;
+    for (const [hex, name] of COLOR_NAMES) {
+      const hr = parseInt(hex.slice(1,3), 16);
+      const hg = parseInt(hex.slice(3,5), 16);
+      const hb = parseInt(hex.slice(5,7), 16);
+      const lab = rgbToLab(hr, hg, hb);
+      const d = (targetLab[0]-lab[0])**2 + (targetLab[1]-lab[1])**2 + (targetLab[2]-lab[2])**2;
+      if (d < bestDist) { bestDist = d; bestName = name; }
+    }
+    return bestName;
+  }
+
+  // Convert ratios to simple integer ratio string (e.g. "3:1" or "2:1:1")
+  function toRatioString(components) {
+    if (components.length === 1) return '—';
+    // Find ratios relative to smallest
+    const ratios = components.map(c => c.ratio);
+    const minR = Math.min(...ratios);
+    const normalized = ratios.map(r => r / minR);
+    // Round to nearest 0.5 then express as integers
+    // Multiply to get whole numbers
+    let multiplier = 1;
+    for (let m = 1; m <= 12; m++) {
+      const all = normalized.map(n => n * m);
+      if (all.every(v => Math.abs(v - Math.round(v)) < 0.15)) {
+        multiplier = m;
+        break;
+      }
+    }
+    const parts = normalized.map(n => Math.round(n * multiplier));
+    return parts.join(':');
+  }
+
+  // Find the best mix of base paints to approximate a target color
+  // Uses least-squares optimization over Lab space
+  function findMixRecipe(targetRgb, basePaints, maxComponents = 4) {
+    const targetLab = rgbToLab(targetRgb.r, targetRgb.g, targetRgb.b);
+    const baseLabs = basePaints.map(p => rgbToLab(p.rgb[0], p.rgb[1], p.rgb[2]));
+
+    let bestRecipe = null;
+    let bestDist = Infinity;
+
+    // Try single paints first
+    for (let i = 0; i < basePaints.length; i++) {
+      const d = labDist(targetLab, baseLabs[i]);
+      if (d < bestDist) {
+        bestDist = d;
+        bestRecipe = [{ idx: i, ratio: 1 }];
+      }
+    }
+
+    // Try pairs
+    for (let i = 0; i < basePaints.length; i++) {
+      for (let j = i + 1; j < basePaints.length; j++) {
+        const result = optimizeMix2(targetLab, baseLabs[i], baseLabs[j]);
+        if (result.dist < bestDist) {
+          bestDist = result.dist;
+          bestRecipe = [
+            { idx: i, ratio: result.ratioA },
+            { idx: j, ratio: result.ratioB },
+          ].filter(r => r.ratio >= 0.05);
+        }
+      }
+    }
+
+    // Try triples (if still not close enough)
+    if (bestDist > 8) {
+      for (let i = 0; i < basePaints.length; i++) {
+        for (let j = i + 1; j < basePaints.length; j++) {
+          for (let k = j + 1; k < basePaints.length; k++) {
+            const result = optimizeMix3(targetLab, baseLabs[i], baseLabs[j], baseLabs[k]);
+            if (result.dist < bestDist) {
+              bestDist = result.dist;
+              bestRecipe = [
+                { idx: i, ratio: result.a },
+                { idx: j, ratio: result.b },
+                { idx: k, ratio: result.c },
+              ].filter(r => r.ratio >= 0.05);
+            }
+          }
+        }
+      }
+    }
+
+    // Normalize ratios
+    const total = bestRecipe.reduce((s, r) => s + r.ratio, 0);
+    bestRecipe.forEach(r => r.ratio = r.ratio / total);
+
+    return {
+      components: bestRecipe.map(r => ({
+        name: basePaints[r.idx].name,
+        rgb: basePaints[r.idx].rgb,
+        ratio: r.ratio
+      })),
+      distance: bestDist
+    };
+  }
+
+  function labDist(a, b) {
+    return Math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2 + (a[2]-b[2])**2);
+  }
+
+  // Mix Lab colors (subtractive approximation: weighted average in Lab)
+  function mixLab(labA, labB, ratioA) {
+    const ratioB = 1 - ratioA;
+    return [
+      labA[0]*ratioA + labB[0]*ratioB,
+      labA[1]*ratioA + labB[1]*ratioB,
+      labA[2]*ratioA + labB[2]*ratioB
+    ];
+  }
+
+  function optimizeMix2(target, labA, labB) {
+    let bestR = 0.5, bestD = Infinity;
+    for (let r = 0; r <= 1; r += 0.05) {
+      const mixed = mixLab(labA, labB, r);
+      const d = labDist(target, mixed);
+      if (d < bestD) { bestD = d; bestR = r; }
+    }
+    // Fine-tune
+    for (let r = Math.max(0, bestR - 0.05); r <= Math.min(1, bestR + 0.05); r += 0.01) {
+      const mixed = mixLab(labA, labB, r);
+      const d = labDist(target, mixed);
+      if (d < bestD) { bestD = d; bestR = r; }
+    }
+    return { ratioA: bestR, ratioB: 1 - bestR, dist: bestD };
+  }
+
+  function optimizeMix3(target, labA, labB, labC) {
+    let bestA = 0.33, bestB = 0.33, bestD = Infinity;
+    for (let a = 0; a <= 1; a += 0.1) {
+      for (let b = 0; b <= 1 - a; b += 0.1) {
+        const c = 1 - a - b;
+        const mixed = [
+          labA[0]*a + labB[0]*b + labC[0]*c,
+          labA[1]*a + labB[1]*b + labC[1]*c,
+          labA[2]*a + labB[2]*b + labC[2]*c
+        ];
+        const d = labDist(target, mixed);
+        if (d < bestD) { bestD = d; bestA = a; bestB = b; }
+      }
+    }
+    return { a: bestA, b: bestB, c: 1 - bestA - bestB, dist: bestD };
+  }
+
+  // Generate packing sheet HTML for the PDF
+  function generatePackingSheetHTML(palette, logoUrl) {
+    const basePaints = PAINT_SETS['Acrylic Basic'];
+    const { mat, w, h, regionCount } = generatedData;
+
+    // Calculate coverage (pixel count) per color
+    const coverage = new Array(palette.length).fill(0);
+    for (let i = 0; i < mat.length; i++) {
+      coverage[mat[i]]++;
+    }
+    const totalPixels = w * h;
+
+    // Canvas size calculation based on user's 720 DPI printer
+    const DPI = 720;
+    const printWidthInches = (w * 3) / DPI; // outline is 3x
+    const printHeightInches = (h * 3) / DPI;
+    const printWidthCm = (printWidthInches * 2.54).toFixed(1);
+    const printHeightCm = (printHeightInches * 2.54).toFixed(1);
+
+    // Paint volume calculation
+    // Assume: 1ml acrylic covers ~30 cm² at 1 coat on canvas
+    // Canvas area in cm²
+    const canvasAreaCm2 = printWidthCm * printHeightCm;
+    const ML_PER_CM2 = 1 / 30; // ml per cm² coverage
+    const BUFFER = 1.3; // 30% extra for mixing waste
+
+    // Difficulty rating
+    let difficulty = 'Beginner';
+    let diffStars = '⭐';
+    if (palette.length > 40 || regionCount > 400) { difficulty = 'Expert'; diffStars = '⭐⭐⭐⭐⭐'; }
+    else if (palette.length > 32 || regionCount > 250) { difficulty = 'Advanced'; diffStars = '⭐⭐⭐⭐'; }
+    else if (palette.length > 24 || regionCount > 150) { difficulty = 'Intermediate'; diffStars = '⭐⭐⭐'; }
+    else if (palette.length > 16) { difficulty = 'Easy'; diffStars = '⭐⭐'; }
+
+    // Brush recommendation
+    const smallRegions = coverage.filter(c => c / totalPixels < 0.01).length;
+    const largeRegions = coverage.filter(c => c / totalPixels > 0.05).length;
+    const brushes = [];
+    if (largeRegions > 0) brushes.push('Flat brush 10mm (large areas)');
+    brushes.push('Round brush 4mm (medium areas)');
+    if (smallRegions > 5) brushes.push('Detail brush 1mm (fine details)');
+
+    // Order info
+    const orderId = 'PBN-' + Date.now().toString(36).toUpperCase().slice(-6);
+    const orderDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+    // Build color rows with volume
+    const baseConsumption = {}; // track total ml of each base paint
+    const rows = palette.map((color, i) => {
+      const recipe = findMixRecipe(color, basePaints);
+      const colorName = getColorName(color.r, color.g, color.b);
+      const ratio = toRatioString(recipe.components);
+      const coveragePct = (coverage[i] / totalPixels * 100).toFixed(1);
+      const areaCm2 = (coverage[i] / totalPixels) * canvasAreaCm2;
+      const volumeMl = Math.max(0.5, (areaCm2 * ML_PER_CM2 * BUFFER)).toFixed(1);
+
+      // Track base paint consumption
+      for (const comp of recipe.components) {
+        const mlForThis = parseFloat(volumeMl) * comp.ratio;
+        baseConsumption[comp.name] = (baseConsumption[comp.name] || 0) + mlForThis;
+      }
+
+      const swatchStyle = `display:inline-block;width:10px;height:10px;border-radius:2px;border:1px solid #ccc;vertical-align:middle;margin-right:3px;background:rgb(${color.r},${color.g},${color.b})`;
+      const mixParts = recipe.components.map(c => {
+        const pct = Math.round(c.ratio * 100);
+        return `${c.name} ${pct}%`;
+      }).join(' + ');
+
+      return `<tr style="border-bottom:1px solid #eee;">
+        <td style="padding:2px 4px;font-weight:700;">${i + 1}</td>
+        <td style="padding:2px 4px;white-space:nowrap;"><span style="${swatchStyle}"></span>${colorName}</td>
+        <td style="padding:2px 4px;">${mixParts}</td>
+        <td style="padding:2px 4px;font-family:monospace;">${ratio}</td>
+        <td style="padding:2px 4px;font-weight:600;">${volumeMl}ml</td>
+      </tr>`;
+    }).join('');
+
+    // Total paint volume
+    const totalVolumeMl = palette.reduce((sum, _, i) => {
+      const areaCm2 = (coverage[i] / totalPixels) * canvasAreaCm2;
+      return sum + Math.max(0.5, areaCm2 * ML_PER_CM2 * BUFFER);
+    }, 0).toFixed(1);
+
+    // Base paint consumption table
+    const baseRows = Object.entries(baseConsumption)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, ml]) => {
+        const paint = basePaints.find(p => p.name === name);
+        const swatch = paint ? `display:inline-block;width:10px;height:10px;border-radius:2px;border:1px solid #ccc;vertical-align:middle;background:rgb(${paint.rgb[0]},${paint.rgb[1]},${paint.rgb[2]})` : '';
+        return `<tr>
+          <td style="font-size:10px;padding:3px 6px;"><span style="${swatch}"></span> ${name}</td>
+          <td style="font-size:10px;padding:3px 6px;text-align:right;font-weight:600;">${ml.toFixed(1)} ml</td>
+        </tr>`;
+      }).join('');
+
+    // Color accuracy swatch strip
+    const swatchStrip = palette.map((c, i) => 
+      `<span style="display:inline-block;width:16px;height:16px;background:rgb(${c.r},${c.g},${c.b});border:1px solid #ddd;font-size:7px;text-align:center;line-height:16px;color:${(c.r+c.g+c.b) > 380 ? '#333' : '#fff'}">${i+1}</span>`
+    ).join('');
+
+    return `
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid #333;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <img src="${logoUrl}" style="height:24px;width:auto;" alt="">
+          <div>
+            <h2 style="font-size:13px;margin-bottom:2px;">Packing Sheet — Paint Mixing Guide</h2>
+            <p style="font-size:8px;color:#666;">Pixel Haven Digital Art Studios · Acrylic Basic (${basePaints.length} tubes) · ${palette.length} colors</p>
+          </div>
+        </div>
+        <div style="text-align:right;font-size:9px;color:#666;">
+          <strong style="color:#333;">${orderId}</strong><br>
+          ${orderDate}
+        </div>
+      </div>
+
+      <!-- Kit Info Bar -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:8px;">
+        <div style="padding:5px;border:1px solid #e0e0e0;border-radius:3px;background:#fafafa;font-size:8px;">
+          <strong style="display:block;font-size:7px;color:#888;text-transform:uppercase;margin-bottom:1px;">Canvas Size</strong>
+          ${printWidthCm}×${printHeightCm} cm
+        </div>
+        <div style="padding:5px;border:1px solid #e0e0e0;border-radius:3px;background:#fafafa;font-size:8px;">
+          <strong style="display:block;font-size:7px;color:#888;text-transform:uppercase;margin-bottom:1px;">Difficulty</strong>
+          ${diffStars} ${difficulty}
+        </div>
+        <div style="padding:5px;border:1px solid #e0e0e0;border-radius:3px;background:#fafafa;font-size:8px;">
+          <strong style="display:block;font-size:7px;color:#888;text-transform:uppercase;margin-bottom:1px;">Total Paint</strong>
+          ${totalVolumeMl} ml
+        </div>
+        <div style="padding:5px;border:1px solid #e0e0e0;border-radius:3px;background:#fafafa;font-size:8px;">
+          <strong style="display:block;font-size:7px;color:#888;text-transform:uppercase;margin-bottom:1px;">Brushes</strong>
+          ${brushes.length} included
+        </div>
+      </div>
+
+      <!-- Brushes -->
+      <div style="margin-bottom:6px;padding:4px 8px;border:1px solid #e0e0e0;border-radius:3px;font-size:8px;">
+        <strong>Brushes:</strong> ${brushes.join(' · ')}
+      </div>
+
+      <!-- Color Table -->
+      <table style="width:auto;border-collapse:collapse;font-size:8px;margin-bottom:6px;">
+        <thead>
+          <tr style="border-bottom:1.5px solid #333;text-align:left;">
+            <th style="padding:3px 4px;">#</th>
+            <th style="padding:3px 4px;">Color</th>
+            <th style="padding:3px 4px;">Mix</th>
+            <th style="padding:3px 4px;">Ratio</th>
+            <th style="padding:3px 4px;">Vol.</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+
+      <!-- Base Paint Consumption -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;page-break-inside:avoid;">
+        <div style="border:1px solid #e0e0e0;border-radius:4px;padding:10px;">
+          <strong style="font-size:10px;display:block;margin-bottom:6px;">Base Paint Stock Required</strong>
+          <table style="width:100%;border-collapse:collapse;">
+            ${baseRows}
+          </table>
+        </div>
+        <div style="border:1px solid #e0e0e0;border-radius:4px;padding:10px;">
+          <strong style="font-size:10px;display:block;margin-bottom:6px;">Kit Contents Checklist</strong>
+          <div style="font-size:10px;line-height:1.8;">
+            ☐ Canvas (${printWidthCm}×${printHeightCm} cm)<br>
+            ☐ Paint pots ×${palette.length}<br>
+            ☐ Brushes ×${brushes.length}<br>
+            ☐ Color guide card<br>
+            ☐ Reference print<br>
+            ☐ Instructions sheet
+          </div>
+        </div>
+      </div>
+
+      <!-- Color Accuracy Swatch Strip -->
+      <div style="border:1px solid #e0e0e0;border-radius:4px;padding:10px;page-break-inside:avoid;">
+        <strong style="font-size:10px;display:block;margin-bottom:6px;">Color Accuracy Check — compare mixed paints against these swatches:</strong>
+        <div style="display:flex;flex-wrap:wrap;gap:1px;">
+          ${swatchStrip}
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div style="border-top:1px solid #e0e0e0;padding-top:8px;margin-top:10px;font-size:9px;color:#999;display:flex;justify-content:space-between;">
+        <span>Generated by PBN Studio · ${orderDate}</span>
+        <span>${orderId} · ${palette.length} colors · ${regionCount} regions</span>
+      </div>
+    `;
+  }
+
+  function getUsedBasePaints(palette, basePaints) {
+    const used = new Set();
+    for (const color of palette) {
+      const recipe = findMixRecipe(color, basePaints);
+      for (const c of recipe.components) {
+        used.add(c.name);
+      }
+    }
+    return basePaints.filter(p => used.has(p.name));
+  }
+
+  // Load logo as base64 for PDF embedding
+  function getLogoDataUrl(filename) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        resolve(c.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve('');
+      img.src = filename || 'logo.png';
+    });
+  }
+
+  // PDF generation (actual PDF with 5 pages)
+  async function generatePDF() {
     const { palette, mat, matLine, labels, w, h, regionCount } = generatedData;
 
     // Get image data URLs for each page
@@ -868,6 +1300,10 @@
     const colorHintDataUrl = generatedData.outlineColorCanvas.toDataURL('image/jpeg', 0.92);
     const paletteDataUrl = paletteCanvas.toDataURL('image/jpeg', 0.95);
     const filledDataUrl = filledCanvas.toDataURL('image/jpeg', 0.92);
+
+    // Load logos as data URLs for embedding in print
+    const logoDataUrl = await getLogoDataUrl('logo-no-bg.png');
+    const logoIconUrl = await getLogoDataUrl('logo-icon.png');
 
     // Use a print window approach — creates a proper PDF via browser print
     const printWindow = window.open('', '_blank');
@@ -879,14 +1315,20 @@
     printWindow.document.write(`<!DOCTYPE html>
 <html><head><title>Paint by Number Kit</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  @page { size: A4 portrait; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  img { border: none; outline: none; }
+  @page { size: letter portrait; margin: 0; }
   @media print {
     .page { page-break-after: always; }
     .page:last-child { page-break-after: auto; }
     .no-print { display: none; }
+    .page-padded { padding: 0.5in 0.6in; font-size: 8px; overflow: hidden; max-height: 100vh; }
+    .page-instructions { padding: 0.5in 0.6in; font-size: 11px; }
+    .page-instructions h2 { font-size: 18px; margin-bottom: 4px; }
+    .page-instructions h3 { font-size: 12px; }
+    .page-instructions ul { font-size: 11px; line-height: 1.8; }
   }
-  body { font-family: -apple-system, sans-serif; color: #1c1917; }
+  body { font-family: -apple-system, sans-serif; color: #1c1917; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .page {
     width: 100%;
     height: 100vh;
@@ -895,13 +1337,22 @@
     align-items: center;
     justify-content: center;
   }
+  .page-full {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   .page-full img {
-    width: 100%;
-    height: 100%;
+    max-width: 100%;
+    max-height: 100%;
     object-fit: contain;
   }
   .page-padded {
     padding: 20px;
+    overflow: hidden;
+  }
+  .page-padded > * {
+    page-break-inside: avoid;
   }
   .page-header {
     width: 100%;
@@ -915,6 +1366,8 @@
     max-width: 100%;
     max-height: calc(100vh - 120px);
     object-fit: contain;
+  }
+  .page-padded img.page-img {
     border: 1px solid #e0e0e0;
   }
   .page3-grid {
@@ -929,8 +1382,10 @@
     height: auto;
     max-height: calc(100vh - 140px);
     object-fit: contain;
-    border: 1px solid #e0e0e0;
   }
+  table { border-collapse: collapse; }
+  tbody tr { border-bottom: 1px solid #eee; }
+  tbody td { padding: 5px 4px; vertical-align: middle; }
   .print-btn {
     position: fixed;
     top: 16px;
@@ -946,6 +1401,13 @@
     z-index: 100;
   }
   .print-btn:hover { background: #005a9e; }
+  .pdf-logo { height: 30px; width: auto; border: none; }
+  .pdf-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .pdf-brand img { border: none; }
+  .pdf-brand-name { font-size: 14px; font-weight: 700; color: #333; }
+  .pdf-brand-sub { font-size: 9px; color: #888; }
+  .pdf-footer { position: absolute; bottom: 12px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: center; font-size: 8px; color: #aaa; }
+  .pdf-footer img { height: 16px; opacity: 0.5; border: none; }
 </style>
 </head><body>
 <button class="print-btn no-print" onclick="window.print(); setTimeout(() => window.close(), 500);">Save as PDF</button>
@@ -958,19 +1420,120 @@
   <img src="${colorHintDataUrl}" alt="Color Hint">
 </div>
 
-<div class="page page-padded">
+<div class="page page-padded" style="position:relative;">
+  <div class="pdf-brand">
+    <img src="${logoDataUrl}" class="pdf-logo" alt="Pixel Haven">
+  </div>
   <div class="page-header">
     <h2>Color Palette & Finished Example</h2>
     <p>${palette.length} colors · ${regionCount} regions</p>
   </div>
   <div class="page3-grid">
-    <img src="${paletteDataUrl}" alt="Color Palette">
-    <img src="${filledDataUrl}" alt="Finished Painting">
+    <img src="${paletteDataUrl}" alt="Color Palette" class="page-img">
+    <img src="${filledDataUrl}" alt="Finished Painting" class="page-img">
   </div>
+  <div class="pdf-footer"><img src="${logoIconUrl}" alt="">Pixel Haven Digital Art Studios</div>
+</div>
+
+<div class="page page-padded" style="position:relative;">
+  ${generatePackingSheetHTML(palette, logoDataUrl)}
+  <div class="pdf-footer"><img src="${logoIconUrl}" alt="">Pixel Haven Digital Art Studios</div>
+</div>
+
+<div class="page page-padded page-instructions" style="position:relative;">
+  ${generateInstructionSheet(palette, logoDataUrl)}
+  <div class="pdf-footer"><img src="${logoIconUrl}" alt="">Pixel Haven Digital Art Studios</div>
 </div>
 
 </body></html>`);
     printWindow.document.close();
+  }
+
+  // Generate instruction sheet HTML
+  function generateInstructionSheet(palette, logoUrl) {
+    const { regionCount } = generatedData;
+    const estHours = Math.round(regionCount * 2 / 60);
+    const timeRange = `${Math.max(1, estHours - 1)}–${estHours + 2} hours`;
+
+    return `
+      <div style="max-width:100%;height:100%;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px;">
+          <img src="${logoUrl}" style="height:30px;width:auto;" alt="">
+          <div style="text-align:center;">
+            <h2 style="font-size:20px;margin:0;">How to Paint Your Masterpiece</h2>
+            <p style="font-size:9px;color:#888;margin:0;">Pixel Haven Digital Art Studios</p>
+          </div>
+        </div>
+        <p style="font-size:12px;color:#666;text-align:center;margin-bottom:20px;">${palette.length} colors · ${regionCount} regions · Estimated time: ${timeRange}</p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+          <div>
+            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">🧰 Before You Start</h3>
+            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
+              <li>Find a flat, well-lit workspace — natural daylight is best</li>
+              <li>Match all paint pot numbers to the color guide</li>
+              <li>Keep water and paper towel nearby for brush cleaning</li>
+              <li>Wear old clothes — acrylic doesn't wash out once dry</li>
+              <li>Keep your reference image visible while painting</li>
+            </ul>
+
+            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">🖌️ Painting Technique</h3>
+            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
+              <li><strong>One color at a time:</strong> Finish all areas of one number before moving on</li>
+              <li><strong>Dark to light:</strong> Start with darkest colors, finish with whites</li>
+              <li><strong>Large to small:</strong> Big areas first, details last</li>
+              <li><strong>Top to bottom:</strong> Avoid resting hand on wet paint</li>
+              <li><strong>Thin coats:</strong> 2 thin coats &gt; 1 thick coat. Dry 2–3 min between</li>
+              <li><strong>Edge first:</strong> Paint borders of each section, then fill middle</li>
+              <li><strong>Cover numbers:</strong> Ensure paint fully covers printed numbers</li>
+            </ul>
+
+            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">🧹 Paint Care</h3>
+            <ul style="font-size:11px;line-height:2;padding-left:16px;">
+              <li>Seal pots immediately — acrylic dries in minutes</li>
+              <li>If paint thickens, add 1–2 drops of water only</li>
+              <li>Clean brushes right away with water</li>
+              <li>Don't leave brushes standing in water</li>
+              <li>Reshape tips after washing, lay flat to dry</li>
+            </ul>
+          </div>
+
+          <div>
+            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">🎯 Pro Tips</h3>
+            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
+              <li><strong>Blending:</strong> Feather edges while wet for smooth transitions</li>
+              <li><strong>Texture:</strong> Dab/stipple for foliage, clouds, hair</li>
+              <li><strong>Highlights:</strong> Tiny white dots on eyes/shiny areas at the end</li>
+              <li><strong>Shadows:</strong> Mix a drop of black to deepen one side of a section</li>
+              <li><strong>Dry brush:</strong> Little paint on dry brush, drag lightly for wispy effects</li>
+              <li><strong>Fix mistakes:</strong> Let dry fully, then paint over — acrylic covers well</li>
+            </ul>
+
+            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">✏️ Optional: Outline Your Art</h3>
+            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
+              <li>Wait until all paint is completely dry (1+ hours)</li>
+              <li>Use a <strong>0.3–0.5mm permanent marker</strong> or felt-tip pen</li>
+              <li>Black pen = graphic look · Brown pen = softer, natural feel</li>
+              <li>Outline major shapes only — skip tiny sections</li>
+              <li>Adds definition, especially for portraits and pets</li>
+              <li>Test pen on a painted edge first to check for smudging</li>
+            </ul>
+
+            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">✅ Finishing</h3>
+            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
+              <li>Let dry <strong>24 hours</strong> before handling</li>
+              <li>Optional: clear acrylic varnish for UV protection</li>
+              <li>Frame without glass for textured look</li>
+              <li>Avoid direct sunlight to preserve colors</li>
+            </ul>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding:10px;border:1px solid #e0e0e0;border-radius:4px;background:#f9f9f9;text-align:center;font-size:11px;color:#666;">
+          <strong style="color:#333;">Enjoy the process!</strong> Take your time — put on some music and relax. 🎶
+        </div>
+      </div>
+    `;
   }
 
   // ===== SAVE TO GALLERY =====
