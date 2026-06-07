@@ -177,7 +177,9 @@
       renderPaletteGuide(palette);
       renderComparison(matSmooth, palette, w, h);
 
-      generatedData = { palette, mat: matSmooth, labels, w, h, matLine, regionCount };
+      generatedData = { palette, mat: matSmooth, labels, w, h, matLine, regionCount,
+        settings: { numColors, smoothRange, minRegionSize, targetW: w, colorSpace }
+      };
 
       // Pre-render export canvases so downloads are instant
       generatedData.outlineColorCanvas = renderOutlineWithColor(generatedData);
@@ -310,15 +312,23 @@
       if (!changed) break;
     }
 
-    // Deduplicate near-identical colors (Lab distance < 5)
+    // Deduplicate visually similar colors (Lab distance < 15)
+    // Aggressive merge — colors that look the same when mixed as paint get combined
     const unique = [centroids[0]];
     for (let i = 1; i < centroids.length; i++) {
       let isDup = false;
       for (const u of unique) {
-        if (colorDistSq(centroids[i], u, 'lab') < 25) { isDup = true; break; }
+        if (colorDistSq(centroids[i], u, 'lab') < 225) { isDup = true; break; } // Lab dist < 15
       }
       if (!isDup) unique.push(centroids[i]);
     }
+
+    // Sort palette from lightest to darkest (by Lab L value)
+    unique.sort((a, b) => {
+      const labA = rgbToLab(a[0], a[1], a[2]);
+      const labB = rgbToLab(b[0], b[1], b[2]);
+      return labB[0] - labA[0]; // highest L (lightest) first
+    });
 
     return unique.map(c => ({ r: c[0], g: c[1], b: c[2] }));
   }
@@ -512,25 +522,40 @@
     outlineCanvas.height = oh;
     const ctx = outlineCanvas.getContext('2d');
 
-    // Draw white background + outlines scaled up
+    // Pre-compute lightness for each palette color
+    const paletteLightness = palette.map(c => rgbToLab(c.r, c.g, c.b)[0]);
+
+    // Draw background + adaptive outlines
+    // Light regions get dark outlines, dark regions get light outlines
     const imgData = ctx.createImageData(ow, oh);
     for (let y = 0; y < oh; y++) {
       for (let x = 0; x < ow; x++) {
         const srcX = Math.floor(x / scale);
         const srcY = Math.floor(y / scale);
-        const isLine = matLine[srcY * w + srcX];
-        const gray = isLine ? 80 : 255;
+        const srcIdx = srcY * w + srcX;
+        const isLine = matLine[srcIdx];
+        const colorIdx = mat[srcIdx];
+        const lightness = paletteLightness[colorIdx] || 50;
         const idx = (y * ow + x) * 4;
-        imgData.data[idx] = gray;
-        imgData.data[idx+1] = gray;
-        imgData.data[idx+2] = gray;
+
+        if (isLine) {
+          // Adaptive outline: dark outline on light areas, light outline on dark areas
+          if (lightness > 55) {
+            // Light region — use dark grey outline
+            imgData.data[idx] = 60; imgData.data[idx+1] = 60; imgData.data[idx+2] = 60;
+          } else {
+            // Dark region — use light grey outline (easier to cover with dark paint)
+            imgData.data[idx] = 180; imgData.data[idx+1] = 180; imgData.data[idx+2] = 180;
+          }
+        } else {
+          imgData.data[idx] = 255; imgData.data[idx+1] = 255; imgData.data[idx+2] = 255;
+        }
         imgData.data[idx+3] = 255;
       }
     }
     ctx.putImageData(imgData, 0, 0);
 
     // Draw numbers — size adapts to available space in the region
-    // All coordinates and sizes are now in the scaled space
     const baseFontSize = Math.max(12, Math.round(ow / 70));
     const minFontSize = Math.max(8, Math.round(ow / 180));
     const maxFontSize = Math.round(ow / 30);
@@ -541,7 +566,6 @@
     for (const loc of labels) {
       const num = String(loc.value + 1);
       const numDigits = num.length;
-      // radius is in original pixels, scale it up
       const r = loc.radius * scale;
       const maxByWidth = (r * 1.6) / (0.6 * numDigits);
       const maxByHeight = r * 1.6;
@@ -552,16 +576,27 @@
       const lx = loc.x * scale;
       const ly = loc.y * scale;
 
-      ctx.font = `bold ${fontSize}px 'Instrument Sans', sans-serif`;
+      // Adaptive number color based on region lightness
+      const colorIdx = mat[loc.y * w + loc.x];
+      const lightness = paletteLightness[colorIdx] || 50;
+
+      ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
       const metrics = ctx.measureText(num);
       const tw = metrics.width + 4;
       const th = fontSize + 3;
 
-      // White background for readability
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillRect(lx - tw/2, ly - th/2, tw, th);
-
-      ctx.fillStyle = '#1c1917';
+      if (lightness > 55) {
+        // Light region: dark number on semi-transparent white background
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.fillRect(lx - tw/2, ly - th/2, tw, th);
+        ctx.fillStyle = '#333333';
+      } else {
+        // Dark region: light number on semi-transparent dark background
+        // Uses lighter ink that's easy to cover with dark paint
+        ctx.fillStyle = 'rgba(200,200,200,0.4)';
+        ctx.fillRect(lx - tw/2, ly - th/2, tw, th);
+        ctx.fillStyle = '#aaaaaa';
+      }
       ctx.fillText(num, lx, ly);
     }
   }
@@ -1138,11 +1173,19 @@
         return `${c.name} ${pct}%`;
       }).join(' + ');
 
+      // Visual ratio circles — sized proportionally (max 24px for the largest component)
+      const maxRatio = Math.max(...recipe.components.map(c => c.ratio));
+      const ratioDots = recipe.components.map(c => {
+        const size = Math.max(10, Math.round((c.ratio / maxRatio) * 24));
+        return `<span style="display:inline-block;width:${size}px;height:${size}px;border-radius:50%;background:rgb(${c.rgb[0]},${c.rgb[1]},${c.rgb[2]});border:1px solid #999;vertical-align:middle;margin-right:2px;"></span>`;
+      }).join(' ');
+
       return `<tr style="border-bottom:1px solid #eee;">
         <td style="padding:2px 4px;font-weight:700;">${i + 1}</td>
         <td style="padding:2px 4px;white-space:nowrap;"><span style="${swatchStyle}"></span>${colorName}</td>
         <td style="padding:2px 4px;">${mixParts}</td>
         <td style="padding:2px 4px;font-family:monospace;">${ratio}</td>
+        <td style="padding:2px 4px;white-space:nowrap;">${ratioDots}</td>
         <td style="padding:2px 4px;font-weight:600;">${volumeMl}ml</td>
       </tr>`;
     }).join('');
@@ -1165,9 +1208,12 @@
         </tr>`;
       }).join('');
 
-    // Color accuracy swatch strip
+    // Color accuracy swatch strip with empty check squares
     const swatchStrip = palette.map((c, i) => 
-      `<span style="display:inline-block;width:16px;height:16px;background:rgb(${c.r},${c.g},${c.b});border:1px solid #ddd;font-size:7px;text-align:center;line-height:16px;color:${(c.r+c.g+c.b) > 380 ? '#333' : '#fff'}">${i+1}</span>`
+      `<div style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;">
+        <span style="display:block;width:36px;height:36px;background:rgb(${c.r},${c.g},${c.b});border:1px solid #ccc;border-radius:3px;font-size:9px;text-align:center;line-height:36px;font-weight:700;color:${(c.r+c.g+c.b) > 380 ? '#333' : '#fff'}">${i+1}</span>
+        <span style="display:block;width:36px;height:36px;border:1.5px dashed #aaa;border-radius:3px;"></span>
+      </div>`
     ).join('');
 
     return `
@@ -1211,54 +1257,70 @@
         <strong>Brushes:</strong> ${brushes.join(' · ')}
       </div>
 
-      <!-- Color Table -->
-      <table style="width:auto;border-collapse:collapse;font-size:8px;margin-bottom:6px;">
-        <thead>
-          <tr style="border-bottom:1.5px solid #333;text-align:left;">
-            <th style="padding:3px 4px;">#</th>
-            <th style="padding:3px 4px;">Color</th>
-            <th style="padding:3px 4px;">Mix</th>
-            <th style="padding:3px 4px;">Ratio</th>
-            <th style="padding:3px 4px;">Vol.</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-      </table>
+      <!-- Generation Settings -->
+      <div style="margin-bottom:6px;padding:4px 8px;border:1px solid #e0e0e0;border-radius:3px;font-size:8px;display:flex;gap:12px;flex-wrap:wrap;">
+        <span><strong>Colors:</strong> ${generatedData.settings.numColors}</span>
+        <span><strong>Detail:</strong> ${generatedData.settings.smoothRange}</span>
+        <span><strong>Min Region:</strong> ${generatedData.settings.minRegionSize}px</span>
+        <span><strong>Width:</strong> ${generatedData.settings.targetW}px</span>
+        <span><strong>Color Space:</strong> ${generatedData.settings.colorSpace === 'lab' ? 'CIE Lab' : 'RGB'}</span>
+        <span><strong>Output:</strong> ${palette.length} colors · ${regionCount} regions</span>
+      </div>
 
-      <!-- Base Paint Consumption -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;page-break-inside:avoid;">
-        <div style="border:1px solid #e0e0e0;border-radius:4px;padding:10px;">
-          <strong style="font-size:10px;display:block;margin-bottom:6px;">Base Paint Stock Required</strong>
-          <table style="width:100%;border-collapse:collapse;">
-            ${baseRows}
+      <!-- Main Content: Color Table (left) + Stock & Checklist (right) -->
+      <div style="display:grid;grid-template-columns:1fr 200px;gap:12px;margin-bottom:10px;">
+        <!-- Left: Color Table -->
+        <div>
+          <table style="width:100%;border-collapse:collapse;font-size:8px;">
+            <thead>
+              <tr style="border-bottom:1.5px solid #333;text-align:left;">
+                <th style="padding:3px 4px;">#</th>
+                <th style="padding:3px 4px;">Color</th>
+                <th style="padding:3px 4px;">Mix</th>
+                <th style="padding:3px 4px;">Ratio</th>
+                <th style="padding:3px 4px;">Visual</th>
+                <th style="padding:3px 4px;">Vol.</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
           </table>
         </div>
-        <div style="border:1px solid #e0e0e0;border-radius:4px;padding:10px;">
-          <strong style="font-size:10px;display:block;margin-bottom:6px;">Kit Contents Checklist</strong>
-          <div style="font-size:10px;line-height:1.8;">
-            ☐ Canvas (${printWidthCm}×${printHeightCm} cm)<br>
-            ☐ Paint pots ×${palette.length}<br>
-            ☐ Brushes ×${brushes.length}<br>
-            ☐ Color guide card<br>
-            ☐ Reference print<br>
-            ☐ Instructions sheet
+
+        <!-- Right: Base Paint Stock + Kit Checklist -->
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="border:1px solid #e0e0e0;border-radius:4px;padding:8px;">
+            <strong style="font-size:9px;display:block;margin-bottom:4px;">Base Paint Stock Required</strong>
+            <table style="width:100%;border-collapse:collapse;font-size:8px;">
+              ${baseRows}
+            </table>
+          </div>
+          <div style="border:1px solid #e0e0e0;border-radius:4px;padding:8px;">
+            <strong style="font-size:9px;display:block;margin-bottom:4px;">Kit Contents Checklist</strong>
+            <div style="font-size:8px;line-height:1.7;">
+              ☐ Canvas (${printWidthCm}×${printHeightCm} cm)<br>
+              ☐ Paint pots ×${palette.length}<br>
+              ☐ Brushes ×${brushes.length}<br>
+              ☐ Color guide card<br>
+              ☐ Reference print<br>
+              ☐ Instructions sheet
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Color Accuracy Swatch Strip -->
+      <!-- Color Accuracy Swatch Strip (full width, larger) -->
       <div style="border:1px solid #e0e0e0;border-radius:4px;padding:10px;page-break-inside:avoid;">
-        <strong style="font-size:10px;display:block;margin-bottom:6px;">Color Accuracy Check — compare mixed paints against these swatches:</strong>
-        <div style="display:flex;flex-wrap:wrap;gap:1px;">
+        <strong style="font-size:10px;display:block;margin-bottom:8px;">Color Accuracy Check — dab mixed paint in the empty square below each swatch to compare:</strong>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
           ${swatchStrip}
         </div>
       </div>
 
       <!-- Footer -->
       <div style="border-top:1px solid #e0e0e0;padding-top:8px;margin-top:10px;font-size:9px;color:#999;display:flex;justify-content:space-between;">
-        <span>Generated by PBN Studio · ${orderDate}</span>
+        <span>Generated by Pixel Haven · ${orderDate}</span>
         <span>${orderId} · ${palette.length} colors · ${regionCount} regions</span>
       </div>
     `;
@@ -1322,7 +1384,7 @@
     .page { page-break-after: always; }
     .page:last-child { page-break-after: auto; }
     .no-print { display: none; }
-    .page-padded { padding: 0.5in 0.6in; font-size: 8px; overflow: hidden; max-height: 100vh; }
+    .page-padded { padding: 0.4in 0.5in; font-size: 8px; }
     .page-instructions { padding: 0.5in 0.6in; font-size: 11px; }
     .page-instructions h2 { font-size: 18px; margin-bottom: 4px; }
     .page-instructions h3 { font-size: 12px; }
@@ -1380,7 +1442,7 @@
   .page3-grid img {
     width: 100%;
     height: auto;
-    max-height: calc(100vh - 140px);
+    max-height: 40vh;
     object-fit: contain;
   }
   table { border-collapse: collapse; }
@@ -1421,27 +1483,27 @@
 </div>
 
 <div class="page page-padded" style="position:relative;">
-  <div class="pdf-brand">
-    <img src="${logoDataUrl}" class="pdf-logo" alt="Pixel Haven">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #333;width:100%;">
+    <img src="${logoDataUrl}" style="height:40px;width:auto;border:none;" alt="Pixel Haven">
+    <div>
+      <h2 style="font-size:18px;margin:0;font-weight:700;">Reference Guide</h2>
+      <p style="font-size:10px;color:#888;margin:0;">${palette.length} colors · ${regionCount} regions</p>
+    </div>
   </div>
-  <div class="page-header">
-    <h2>Color Palette & Finished Example</h2>
-    <p>${palette.length} colors · ${regionCount} regions</p>
-  </div>
-  <div class="page3-grid">
-    <img src="${paletteDataUrl}" alt="Color Palette" class="page-img">
-    <img src="${filledDataUrl}" alt="Finished Painting" class="page-img">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div>
+      <img src="${paletteDataUrl}" alt="Color Palette" class="page-img" style="width:100%;height:auto;max-height:35vh;object-fit:contain;margin-bottom:10px;">
+      ${generateInstructionSheet(palette, logoDataUrl)}
+    </div>
+    <div>
+      <img src="${filledDataUrl}" alt="Finished Painting" class="page-img" style="width:100%;height:auto;max-height:70vh;object-fit:contain;">
+    </div>
   </div>
   <div class="pdf-footer"><img src="${logoIconUrl}" alt="">Pixel Haven Digital Art Studios</div>
 </div>
 
 <div class="page page-padded" style="position:relative;">
   ${generatePackingSheetHTML(palette, logoDataUrl)}
-  <div class="pdf-footer"><img src="${logoIconUrl}" alt="">Pixel Haven Digital Art Studios</div>
-</div>
-
-<div class="page page-padded page-instructions" style="position:relative;">
-  ${generateInstructionSheet(palette, logoDataUrl)}
   <div class="pdf-footer"><img src="${logoIconUrl}" alt="">Pixel Haven Digital Art Studios</div>
 </div>
 
@@ -1456,81 +1518,31 @@
     const timeRange = `${Math.max(1, estHours - 1)}–${estHours + 2} hours`;
 
     return `
-      <div style="max-width:100%;height:100%;">
-        <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:4px;">
-          <img src="${logoUrl}" style="height:30px;width:auto;" alt="">
-          <div style="text-align:center;">
-            <h2 style="font-size:20px;margin:0;">How to Paint Your Masterpiece</h2>
-            <p style="font-size:9px;color:#888;margin:0;">Pixel Haven Digital Art Studios</p>
-          </div>
-        </div>
-        <p style="font-size:12px;color:#666;text-align:center;margin-bottom:20px;">${palette.length} colors · ${regionCount} regions · Estimated time: ${timeRange}</p>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-          <div>
-            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">🧰 Before You Start</h3>
-            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
-              <li>Find a flat, well-lit workspace — natural daylight is best</li>
-              <li>Match all paint pot numbers to the color guide</li>
-              <li>Keep water and paper towel nearby for brush cleaning</li>
-              <li>Wear old clothes — acrylic doesn't wash out once dry</li>
-              <li>Keep your reference image visible while painting</li>
-            </ul>
-
-            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">🖌️ Painting Technique</h3>
-            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
-              <li><strong>One color at a time:</strong> Finish all areas of one number before moving on</li>
-              <li><strong>Dark to light:</strong> Start with darkest colors, finish with whites</li>
-              <li><strong>Large to small:</strong> Big areas first, details last</li>
-              <li><strong>Top to bottom:</strong> Avoid resting hand on wet paint</li>
-              <li><strong>Thin coats:</strong> 2 thin coats &gt; 1 thick coat. Dry 2–3 min between</li>
-              <li><strong>Edge first:</strong> Paint borders of each section, then fill middle</li>
-              <li><strong>Cover numbers:</strong> Ensure paint fully covers printed numbers</li>
-            </ul>
-
-            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">🧹 Paint Care</h3>
-            <ul style="font-size:11px;line-height:2;padding-left:16px;">
-              <li>Seal pots immediately — acrylic dries in minutes</li>
-              <li>If paint thickens, add 1–2 drops of water only</li>
-              <li>Clean brushes right away with water</li>
-              <li>Don't leave brushes standing in water</li>
-              <li>Reshape tips after washing, lay flat to dry</li>
-            </ul>
-          </div>
-
-          <div>
-            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">🎯 Pro Tips</h3>
-            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
-              <li><strong>Blending:</strong> Feather edges while wet for smooth transitions</li>
-              <li><strong>Texture:</strong> Dab/stipple for foliage, clouds, hair</li>
-              <li><strong>Highlights:</strong> Tiny white dots on eyes/shiny areas at the end</li>
-              <li><strong>Shadows:</strong> Mix a drop of black to deepen one side of a section</li>
-              <li><strong>Dry brush:</strong> Little paint on dry brush, drag lightly for wispy effects</li>
-              <li><strong>Fix mistakes:</strong> Let dry fully, then paint over — acrylic covers well</li>
-            </ul>
-
-            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">✏️ Optional: Outline Your Art</h3>
-            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
-              <li>Wait until all paint is completely dry (1+ hours)</li>
-              <li>Use a <strong>0.3–0.5mm permanent marker</strong> or felt-tip pen</li>
-              <li>Black pen = graphic look · Brown pen = softer, natural feel</li>
-              <li>Outline major shapes only — skip tiny sections</li>
-              <li>Adds definition, especially for portraits and pets</li>
-              <li>Test pen on a painted edge first to check for smudging</li>
-            </ul>
-
-            <h3 style="font-size:13px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #e0e0e0;">✅ Finishing</h3>
-            <ul style="font-size:11px;line-height:2;padding-left:16px;margin-bottom:14px;">
-              <li>Let dry <strong>24 hours</strong> before handling</li>
-              <li>Optional: clear acrylic varnish for UV protection</li>
-              <li>Frame without glass for textured look</li>
-              <li>Avoid direct sunlight to preserve colors</li>
-            </ul>
-          </div>
+      <div style="border-top:1px solid #e0e0e0;padding-top:6px;">
+        <h3 style="font-size:9px;margin-bottom:5px;">🎨 How to Paint Your Masterpiece <span style="font-weight:400;color:#888;font-size:7px;">· Est. ${timeRange}</span></h3>
+        
+        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+          <strong>🧰 Setup:</strong> Work on a flat surface with good lighting. Lay out all numbered pots and match them to the color guide. Keep a cup of water, paper towel, and your reference image nearby. Wear old clothes — acrylic is permanent once dry.
         </div>
 
-        <div style="margin-top:14px;padding:10px;border:1px solid #e0e0e0;border-radius:4px;background:#f9f9f9;text-align:center;font-size:11px;color:#666;">
-          <strong style="color:#333;">Enjoy the process!</strong> Take your time — put on some music and relax. 🎶
+        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+          <strong>🖌️ Technique:</strong> Paint one color at a time across the whole canvas — finish every section numbered "1" before moving to "2", and so on. This avoids constant brush cleaning. Work light to dark — darker colors cover light ones easily if you overlap a border, but light paint struggles to cover dark mistakes. Start with the largest numbered areas using the flat brush, then switch to the fine brush for small sections. Work top to bottom so you don't rest your hand on wet paint. For each section: paint along the border edges first, then fill in the middle. Apply thin even coats — if the canvas texture shows through, let it dry 5–10 minutes and add a second coat. Make sure paint fully covers the printed numbers and lines.
+        </div>
+
+        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+          <strong>🎯 Tips & Tricks:</strong> Stay inside the lines — paint right up to the border but don't cross into neighboring numbered sections. If you accidentally paint over a line, let it dry and paint the correct color back over it. Use a steady hand for small sections — rest your wrist on the table or your other hand. If a number is hard to read, check the color guide before painting. Dip only the tip of the brush into paint — you need less than you think. If the canvas shows through after one coat, let it dry and add a second thin coat. Close each pot immediately after dipping — don't leave them open while you paint.
+        </div>
+
+        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+          <strong>✏️ Optional Outlining:</strong> Once all sections are fully dry (wait at least 1 hour), you can trace along the borders between sections with a 0.3–0.5mm permanent marker or felt-tip pen. Use black for a bold graphic look or dark brown for a softer natural feel. This hides any small gaps between colors and gives the painting a polished, defined appearance — especially effective on portraits and pets. Only outline the major borders. Test your pen on a painted edge first to check it doesn't smudge on the acrylic surface.
+        </div>
+
+        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+          <strong>🧹 Paint Care:</strong> Seal pots tightly after every use — acrylic dries permanently in minutes. If paint thickens, add 1–2 drops of water max. Clean brushes immediately with water (dried acrylic ruins bristles). Reshape brush tips after washing and lay flat to dry. Never leave brushes standing in water.
+        </div>
+
+        <div style="font-size:7px;line-height:1.6;">
+          <strong>✅ Finally:</strong> Let the completed painting dry 24 hours before handling or framing. But most importantly — relax and have fun! This is YOUR masterpiece. Mistakes happen and that's totally fine — they add character. Don't overthink it, just enjoy the process. Put on some music, grab a drink, and take your time. There's no wrong way to do this. When you're done, step back and admire what you created. You did that! 🎉
         </div>
       </div>
     `;
