@@ -64,6 +64,10 @@
   minRegionSlider.addEventListener('input', () => { minRegionValue.textContent = minRegionSlider.value; });
   widthSlider.addEventListener('input', () => { widthValue.textContent = widthSlider.value; });
 
+  const mergeSlider = $('mergeSlider');
+  const mergeValue = $('mergeValue');
+  mergeSlider.addEventListener('input', () => { mergeValue.textContent = mergeSlider.value; });
+
   // Color presets
   document.querySelectorAll('.color-preset').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -107,28 +111,247 @@
     img.src = URL.createObjectURL(file);
   }
 
+  function handleFile(file) {
+    const img = new Image();
+    img.onload = () => {
+      loadedImage = img;
+      croppedImage = null;
+      generateBtn.disabled = false;
+      // Show crop tool
+      showCropTool(img);
+      // Update dropzone to show selected state
+      dropZone.innerHTML = `<img src="${img.src}" style="max-width:100%;max-height:200px;border-radius:4px;display:block;margin:0 auto;" alt="Selected"><p style="margin-top:8px;font-size:11px;color:var(--text-muted)">Click to change · ${img.naturalWidth}×${img.naturalHeight}</p>`;
+    };
+    img.src = URL.createObjectURL(file);
+  }
+
+  // --- Crop Tool ---
+  let croppedImage = null;
+  const cropContainer = $('cropContainer');
+  const cropCanvas = $('cropCanvas');
+  const cropBox = $('cropBox');
+  const cropSection = $('cropSection');
+  const cropRatioSelect = $('cropRatioSelect');
+  const cropResetBtn = $('cropResetBtn');
+  const cropApplyBtn = $('cropApplyBtn');
+
+  let cropState = { x: 0, y: 0, w: 0, h: 0, imgW: 0, imgH: 0, canvasRect: null };
+
+  function showCropTool(img) {
+    uploadState.hidden = true;
+    cropContainer.hidden = false;
+    cropSection.hidden = false;
+
+    // Draw image to crop canvas
+    const maxW = cropContainer.clientWidth - 40 || 600;
+    const maxH = cropContainer.clientHeight - 40 || 500;
+    const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+    const cw = Math.round(img.naturalWidth * scale);
+    const ch = Math.round(img.naturalHeight * scale);
+    cropCanvas.width = cw;
+    cropCanvas.height = ch;
+    cropCanvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+
+    // Init crop box to full image
+    cropState.imgW = img.naturalWidth;
+    cropState.imgH = img.naturalHeight;
+    cropState.scale = scale;
+    resetCropBox();
+  }
+
+  function resetCropBox() {
+    const rect = cropCanvas.getBoundingClientRect();
+    cropState.canvasRect = rect;
+    cropBox.style.left = rect.left + 'px';
+    cropBox.style.top = rect.top + 'px';
+    cropBox.style.width = rect.width + 'px';
+    cropBox.style.height = rect.height + 'px';
+    cropState.x = 0;
+    cropState.y = 0;
+    cropState.w = cropState.imgW;
+    cropState.h = cropState.imgH;
+  }
+
+  cropRatioSelect.addEventListener('change', () => {
+    const val = cropRatioSelect.value;
+    if (val === 'free') { resetCropBox(); return; }
+    const ratio = parseFloat(val); // width/height
+    const rect = cropCanvas.getBoundingClientRect();
+    let bw = rect.width, bh = rect.width / ratio;
+    if (bh > rect.height) { bh = rect.height; bw = rect.height * ratio; }
+    const bx = rect.left + (rect.width - bw) / 2;
+    const by = rect.top + (rect.height - bh) / 2;
+    cropBox.style.left = bx + 'px';
+    cropBox.style.top = by + 'px';
+    cropBox.style.width = bw + 'px';
+    cropBox.style.height = bh + 'px';
+    updateCropState();
+  });
+
+  // Drag crop box
+  let cropDrag = null;
+  cropBox.addEventListener('mousedown', startCropDrag);
+  cropBox.addEventListener('touchstart', startCropDrag, { passive: false });
+
+  function startCropDrag(e) {
+    if (e.target.classList.contains('crop-handle')) return; // handles are separate
+    e.preventDefault();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const boxRect = cropBox.getBoundingClientRect();
+    cropDrag = { type: 'move', startX: clientX, startY: clientY, origLeft: boxRect.left, origTop: boxRect.top };
+    document.addEventListener('mousemove', onCropDrag);
+    document.addEventListener('mouseup', endCropDrag);
+    document.addEventListener('touchmove', onCropDrag, { passive: false });
+    document.addEventListener('touchend', endCropDrag);
+  }
+
+  // Drag handles
+  cropBox.querySelectorAll('.crop-handle').forEach(handle => {
+    handle.addEventListener('mousedown', e => startHandleDrag(e, handle.dataset.dir));
+    handle.addEventListener('touchstart', e => startHandleDrag(e, handle.dataset.dir), { passive: false });
+  });
+
+  function startHandleDrag(e, dir) {
+    e.preventDefault();
+    e.stopPropagation();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const boxRect = cropBox.getBoundingClientRect();
+    cropDrag = { type: 'resize', dir, startX: clientX, startY: clientY, origLeft: boxRect.left, origTop: boxRect.top, origW: boxRect.width, origH: boxRect.height };
+    document.addEventListener('mousemove', onCropDrag);
+    document.addEventListener('mouseup', endCropDrag);
+    document.addEventListener('touchmove', onCropDrag, { passive: false });
+    document.addEventListener('touchend', endCropDrag);
+  }
+
+  function onCropDrag(e) {
+    if (!cropDrag) return;
+    e.preventDefault();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const dx = clientX - cropDrag.startX;
+    const dy = clientY - cropDrag.startY;
+    const canvasRect = cropCanvas.getBoundingClientRect();
+    const ratio = cropRatioSelect.value !== 'free' ? parseFloat(cropRatioSelect.value) : null;
+
+    if (cropDrag.type === 'move') {
+      let newLeft = cropDrag.origLeft + dx;
+      let newTop = cropDrag.origTop + dy;
+      const bw = cropBox.offsetWidth, bh = cropBox.offsetHeight;
+      // Constrain to canvas
+      newLeft = Math.max(canvasRect.left, Math.min(canvasRect.right - bw, newLeft));
+      newTop = Math.max(canvasRect.top, Math.min(canvasRect.bottom - bh, newTop));
+      cropBox.style.left = newLeft + 'px';
+      cropBox.style.top = newTop + 'px';
+    } else {
+      let { origLeft, origTop, origW, origH, dir } = cropDrag;
+      let newW = origW, newH = origH, newLeft = origLeft, newTop = origTop;
+      if (dir.includes('e')) newW = Math.max(40, origW + dx);
+      if (dir.includes('w')) { newW = Math.max(40, origW - dx); newLeft = origLeft + dx; }
+      if (dir.includes('s')) newH = Math.max(40, origH + dy);
+      if (dir.includes('n')) { newH = Math.max(40, origH - dy); newTop = origTop + dy; }
+      // Enforce ratio
+      if (ratio) {
+        if (dir.includes('e') || dir.includes('w')) newH = newW / ratio;
+        else newW = newH * ratio;
+      }
+      // Constrain to canvas
+      if (newLeft < canvasRect.left) { newW -= (canvasRect.left - newLeft); newLeft = canvasRect.left; }
+      if (newTop < canvasRect.top) { newH -= (canvasRect.top - newTop); newTop = canvasRect.top; }
+      if (newLeft + newW > canvasRect.right) newW = canvasRect.right - newLeft;
+      if (newTop + newH > canvasRect.bottom) newH = canvasRect.bottom - newTop;
+      cropBox.style.left = newLeft + 'px';
+      cropBox.style.top = newTop + 'px';
+      cropBox.style.width = newW + 'px';
+      cropBox.style.height = newH + 'px';
+    }
+    updateCropState();
+  }
+
+  function endCropDrag() {
+    cropDrag = null;
+    document.removeEventListener('mousemove', onCropDrag);
+    document.removeEventListener('mouseup', endCropDrag);
+    document.removeEventListener('touchmove', onCropDrag);
+    document.removeEventListener('touchend', endCropDrag);
+  }
+
+  function updateCropState() {
+    const canvasRect = cropCanvas.getBoundingClientRect();
+    const boxRect = cropBox.getBoundingClientRect();
+    const scaleX = cropState.imgW / canvasRect.width;
+    const scaleY = cropState.imgH / canvasRect.height;
+    cropState.x = Math.round((boxRect.left - canvasRect.left) * scaleX);
+    cropState.y = Math.round((boxRect.top - canvasRect.top) * scaleY);
+    cropState.w = Math.round(boxRect.width * scaleX);
+    cropState.h = Math.round(boxRect.height * scaleY);
+  }
+
+  cropApplyBtn.addEventListener('click', () => {
+    updateCropState();
+    // Create cropped image
+    const c = document.createElement('canvas');
+    c.width = cropState.w;
+    c.height = cropState.h;
+    c.getContext('2d').drawImage(loadedImage, cropState.x, cropState.y, cropState.w, cropState.h, 0, 0, cropState.w, cropState.h);
+    const croppedImg = new Image();
+    croppedImg.onload = () => {
+      croppedImage = croppedImg;
+      // Show cropped preview in the crop canvas
+      const maxW = cropContainer.clientWidth - 40 || 600;
+      const maxH = cropContainer.clientHeight - 40 || 500;
+      const scale = Math.min(maxW / croppedImg.naturalWidth, maxH / croppedImg.naturalHeight, 1);
+      const cw = Math.round(croppedImg.naturalWidth * scale);
+      const ch = Math.round(croppedImg.naturalHeight * scale);
+      cropCanvas.width = cw;
+      cropCanvas.height = ch;
+      cropCanvas.getContext('2d').drawImage(croppedImg, 0, 0, cw, ch);
+      // Hide crop box, keep canvas showing
+      cropBox.style.display = 'none';
+      // Update panel section
+      cropApplyBtn.textContent = '✓ Cropped';
+      cropApplyBtn.disabled = true;
+      cropResetBtn.textContent = 'Re-crop';
+    };
+    croppedImg.src = c.toDataURL();
+  });
+
+  cropResetBtn.addEventListener('click', () => {
+    croppedImage = null;
+    cropBox.style.display = '';
+    cropApplyBtn.textContent = 'Apply Crop';
+    cropApplyBtn.disabled = false;
+    cropResetBtn.textContent = 'Reset';
+    showCropTool(loadedImage);
+  });
+
   // --- Generate ---
   generateBtn.addEventListener('click', startGeneration);
 
   async function startGeneration() {
     if (!loadedImage) return;
 
+    // Use cropped image if available, otherwise original
+    const sourceImg = croppedImage || loadedImage;
+
     // Show processing overlay in viewport
     uploadState.hidden = true;
+    cropContainer.hidden = true;
     comparisonContainer.hidden = true;
     singleView.hidden = true;
     processingOverlay.hidden = false;
 
     const targetW = parseInt(widthSlider.value);
-    const scale = targetW / loadedImage.naturalWidth;
+    const scale = targetW / sourceImg.naturalWidth;
     const w = targetW;
-    const h = Math.round(loadedImage.naturalHeight * scale);
+    const h = Math.round(sourceImg.naturalHeight * scale);
 
     // Draw source to processing canvas for visual feedback
     processingCanvas.width = w;
     processingCanvas.height = h;
     const pCtx = processingCanvas.getContext('2d');
-    pCtx.drawImage(loadedImage, 0, 0, w, h);
+    pCtx.drawImage(sourceImg, 0, 0, w, h);
 
     const numColors = parseInt(colorSlider.value);
     const smoothRange = parseInt(smoothSlider.value);
@@ -312,13 +535,15 @@
       if (!changed) break;
     }
 
-    // Deduplicate visually similar colors (Lab distance < 15)
+    // Deduplicate visually similar colors (threshold from merge slider)
     // Aggressive merge — colors that look the same when mixed as paint get combined
+    const mergeThreshold = parseInt(mergeSlider.value) || 15;
+    const mergeDistSq = mergeThreshold * mergeThreshold;
     const unique = [centroids[0]];
     for (let i = 1; i < centroids.length; i++) {
       let isDup = false;
       for (const u of unique) {
-        if (colorDistSq(centroids[i], u, 'lab') < 225) { isDup = true; break; } // Lab dist < 15
+        if (colorDistSq(centroids[i], u, 'lab') < mergeDistSq) { isDup = true; break; }
       }
       if (!isDup) unique.push(centroids[i]);
     }
@@ -525,8 +750,7 @@
     // Pre-compute lightness for each palette color
     const paletteLightness = palette.map(c => rgbToLab(c.r, c.g, c.b)[0]);
 
-    // Draw background + adaptive outlines
-    // Light regions get dark outlines, dark regions get light outlines
+    // Draw background + outlines — all outlines are light grey for easy paint coverage
     const imgData = ctx.createImageData(ow, oh);
     for (let y = 0; y < oh; y++) {
       for (let x = 0; x < ow; x++) {
@@ -534,19 +758,11 @@
         const srcY = Math.floor(y / scale);
         const srcIdx = srcY * w + srcX;
         const isLine = matLine[srcIdx];
-        const colorIdx = mat[srcIdx];
-        const lightness = paletteLightness[colorIdx] || 50;
         const idx = (y * ow + x) * 4;
 
         if (isLine) {
-          // Adaptive outline: dark outline on light areas, light outline on dark areas
-          if (lightness > 55) {
-            // Light region — use dark grey outline
-            imgData.data[idx] = 60; imgData.data[idx+1] = 60; imgData.data[idx+2] = 60;
-          } else {
-            // Dark region — use light grey outline (easier to cover with dark paint)
-            imgData.data[idx] = 180; imgData.data[idx+1] = 180; imgData.data[idx+2] = 180;
-          }
+          // Light grey outline — visible but easily covered by any paint
+          imgData.data[idx] = 180; imgData.data[idx+1] = 180; imgData.data[idx+2] = 180;
         } else {
           imgData.data[idx] = 255; imgData.data[idx+1] = 255; imgData.data[idx+2] = 255;
         }
@@ -581,22 +797,12 @@
       const lightness = paletteLightness[colorIdx] || 50;
 
       ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
-      const metrics = ctx.measureText(num);
-      const tw = metrics.width + 4;
-      const th = fontSize + 3;
 
-      if (lightness > 55) {
-        // Light region: dark number on semi-transparent white background
-        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.fillRect(lx - tw/2, ly - th/2, tw, th);
-        ctx.fillStyle = '#333333';
-      } else {
-        // Dark region: light number on semi-transparent dark background
-        // Uses lighter ink that's easy to cover with dark paint
-        ctx.fillStyle = 'rgba(200,200,200,0.4)';
-        ctx.fillRect(lx - tw/2, ly - th/2, tw, th);
-        ctx.fillStyle = '#aaaaaa';
-      }
+      // Light grey numbers — visible enough to read but easily covered by any paint
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(num, lx, ly);
+      ctx.fillStyle = '#999999';
       ctx.fillText(num, lx, ly);
     }
   }
@@ -667,7 +873,7 @@
     resultCanvasBefore.width = w;
     resultCanvasBefore.height = h;
     const ctxB = resultCanvasBefore.getContext('2d');
-    ctxB.drawImage(loadedImage, 0, 0, w, h);
+    ctxB.drawImage(croppedImage || loadedImage, 0, 0, w, h);
 
     // Reset slider to 50%
     setComparisonPosition(50);
@@ -786,11 +992,94 @@
     downloadCanvas(generatedData.filledOutlineCanvas, 'pbn-finished-outline.png');
   });
 
-  // 6. PDF (3 pages)
+  // 6. PDF (print dialog)
   dlPdfBtn.addEventListener('click', () => {
     if (!generatedData) return;
     generatePDF();
   });
+
+  // 7. Direct PDF download (jsPDF — works on mobile)
+  const dlPdfDirectBtn = $('dlPdfDirectBtn');
+  dlPdfDirectBtn.addEventListener('click', () => {
+    if (!generatedData) return;
+    generateDirectPDF();
+  });
+
+  async function generateDirectPDF() {
+    // Check if jsPDF loaded
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      alert('PDF library failed to load. This may be due to browser tracking prevention blocking CDN scripts. Try the "Download PDF" button instead, or disable tracking prevention for this site.');
+      return;
+    }
+    if (!window.html2canvas) {
+      alert('html2canvas failed to load. Try the "Download PDF" button instead.');
+      return;
+    }
+
+    const { jsPDF } = window.jspdf;
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 5;
+    const contentW = pageW - margin * 2;
+    const contentH = pageH - margin * 2;
+
+    // Helper: add canvas as centered page image
+    function addCanvasPage(canvas) {
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      const ratio = canvas.width / canvas.height;
+      let w = contentW, h = contentW / ratio;
+      if (h > contentH) { h = contentH; w = contentH * ratio; }
+      const x = margin + (contentW - w) / 2;
+      const y = margin + (contentH - h) / 2;
+      pdf.addImage(imgData, 'JPEG', x, y, w, h);
+    }
+
+    // Helper: render HTML string to canvas via html2canvas
+    async function renderHTMLToCanvas(htmlContent) {
+      const container = document.createElement('div');
+      container.style.cssText = 'position:fixed;left:-9999px;top:0;width:816px;padding:40px;background:#fff;font-family:-apple-system,sans-serif;font-size:10px;color:#1c1917;';
+      container.innerHTML = htmlContent;
+      document.body.appendChild(container);
+      const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      document.body.removeChild(container);
+      return canvas;
+    }
+
+    // Page 1: Outline
+    addCanvasPage(outlineCanvas);
+
+    // Page 2: Color hint
+    pdf.addPage();
+    addCanvasPage(generatedData.outlineColorCanvas);
+
+    // Page 3: Reference guide (palette + finished + instructions)
+    pdf.addPage();
+    const logoDataUrl = await getLogoDataUrl('logo-no-bg.png');
+    const { palette, regionCount } = generatedData;
+    const refHTML = `
+      <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;border-bottom:2px solid #333;padding-bottom:8px;">
+        <img src="${logoDataUrl}" style="height:36px;width:auto;border:none;">
+        <div><h2 style="font-size:16px;margin:0;">Reference Guide</h2><p style="font-size:9px;color:#888;margin:0;">${palette.length} colors · ${regionCount} regions</p></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+        <img src="${paletteCanvas.toDataURL('image/jpeg',0.95)}" style="width:100%;height:auto;border:1px solid #e0e0e0;border-radius:4px;">
+        <img src="${filledCanvas.toDataURL('image/jpeg',0.92)}" style="width:100%;height:auto;border:1px solid #e0e0e0;border-radius:4px;">
+      </div>
+      ${generateInstructionSheet(palette, logoDataUrl)}
+    `;
+    const refCanvas = await renderHTMLToCanvas(refHTML);
+    addCanvasPage(refCanvas);
+
+    // Page 4: Packing sheet
+    pdf.addPage();
+    const packHTML = generatePackingSheetHTML(palette, logoDataUrl);
+    const packCanvas = await renderHTMLToCanvas(packHTML);
+    addCanvasPage(packCanvas);
+
+    pdf.save('paint-by-number-kit.pdf');
+  }
 
   function downloadCanvas(canvas, filename) {
     const a = document.createElement('a');
@@ -832,10 +1121,11 @@
     }
     ctx.putImageData(imgData, 0, 0);
 
-    // Draw numbers
+    // Draw numbers — no background box, stroke outline for readability
     const baseFontSize = Math.max(12, Math.round(ow / 70));
     const minFontSize = Math.max(8, Math.round(ow / 180));
     const maxFontSize = Math.round(ow / 30);
+    const paletteLightness = palette.map(c => rgbToLab(c.r, c.g, c.b)[0]);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -850,11 +1140,12 @@
       fontSize = Math.round(fontSize);
       const lx = loc.x * scale, ly = loc.y * scale;
       ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
-      const metrics = ctx.measureText(num);
-      const tw = metrics.width + 4, th = fontSize + 3;
-      ctx.fillStyle = 'rgba(255,255,255,0.75)';
-      ctx.fillRect(lx - tw/2, ly - th/2, tw, th);
-      ctx.fillStyle = '#1c1917';
+
+      // Light grey numbers — readable against tinted background, easily covered
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(num, lx, ly);
+      ctx.fillStyle = '#888888';
       ctx.fillText(num, lx, ly);
     }
     return canvas;
@@ -1355,26 +1646,52 @@
 
   // PDF generation (actual PDF with 5 pages)
   async function generatePDF() {
-    const { palette, mat, matLine, labels, w, h, regionCount } = generatedData;
-
-    // Get image data URLs for each page
-    const outlineDataUrl = outlineCanvas.toDataURL('image/jpeg', 0.92);
-    const colorHintDataUrl = generatedData.outlineColorCanvas.toDataURL('image/jpeg', 0.92);
-    const paletteDataUrl = paletteCanvas.toDataURL('image/jpeg', 0.95);
-    const filledDataUrl = filledCanvas.toDataURL('image/jpeg', 0.92);
-
     // Load logos as data URLs for embedding in print
     const logoDataUrl = await getLogoDataUrl('logo-no-bg.png');
     const logoIconUrl = await getLogoDataUrl('logo-icon.png');
 
-    // Use a print window approach — creates a proper PDF via browser print
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Please allow popups to download the PDF.');
+    // Cache for buildPdfHTML
+    buildPdfHTML._logoDataUrl = logoDataUrl;
+    buildPdfHTML._logoIconUrl = logoIconUrl;
+
+    // Create print layout — try popup first, fall back to same-page overlay for mobile
+    let printWindow = null;
+    try {
+      printWindow = window.open('', '_blank');
+    } catch(e) {}
+
+    if (!printWindow || printWindow.closed) {
+      // Mobile fallback: create an iframe overlay
+      let iframe = document.getElementById('pdfIframe');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'pdfIframe';
+        iframe.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;border:none;z-index:9999;background:#fff;';
+        document.body.appendChild(iframe);
+      }
+      iframe.style.display = 'block';
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(buildPdfHTML());
+      doc.close();
       return;
     }
 
-    printWindow.document.write(`<!DOCTYPE html>
+    printWindow.document.write(buildPdfHTML());
+    printWindow.document.close();
+  }
+
+  function buildPdfHTML() {
+    const { palette, mat, matLine, labels, w, h, regionCount } = generatedData;
+    const outlineDataUrl = outlineCanvas.toDataURL('image/jpeg', 0.92);
+    const colorHintDataUrl = generatedData.outlineColorCanvas.toDataURL('image/jpeg', 0.92);
+    const paletteDataUrl = paletteCanvas.toDataURL('image/jpeg', 0.95);
+    const filledDataUrl = filledCanvas.toDataURL('image/jpeg', 0.92);
+    // Use cached logo URLs
+    const logoDataUrl = buildPdfHTML._logoDataUrl || '';
+    const logoIconUrl = buildPdfHTML._logoIconUrl || '';
+
+    return `<!DOCTYPE html>
 <html><head><title>Paint by Number Kit</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1463,6 +1780,21 @@
     z-index: 100;
   }
   .print-btn:hover { background: #005a9e; }
+  .back-btn {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    padding: 10px 24px;
+    background: #444;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 100;
+  }
+  .back-btn:hover { background: #333; }
   .pdf-logo { height: 30px; width: auto; border: none; }
   .pdf-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .pdf-brand img { border: none; }
@@ -1473,6 +1805,7 @@
 </style>
 </head><body>
 <button class="print-btn no-print" onclick="window.print(); setTimeout(() => window.close(), 500);">Save as PDF</button>
+<button class="back-btn no-print" onclick="if(window.frameElement){window.frameElement.style.display='none';}else{window.close();}">← Back</button>
 
 <div class="page page-full">
   <img src="${outlineDataUrl}" alt="Outline">
@@ -1507,8 +1840,7 @@
   <div class="pdf-footer"><img src="${logoIconUrl}" alt="">Pixel Haven Digital Art Studios</div>
 </div>
 
-</body></html>`);
-    printWindow.document.close();
+</body></html>`;
   }
 
   // Generate instruction sheet HTML
@@ -1518,30 +1850,30 @@
     const timeRange = `${Math.max(1, estHours - 1)}–${estHours + 2} hours`;
 
     return `
-      <div style="border-top:1px solid #e0e0e0;padding-top:6px;">
-        <h3 style="font-size:9px;margin-bottom:5px;">🎨 How to Paint Your Masterpiece <span style="font-weight:400;color:#888;font-size:7px;">· Est. ${timeRange}</span></h3>
+      <div style="border-top:1px solid #e0e0e0;padding-top:8px;">
+        <h3 style="font-size:12px;margin-bottom:6px;">🎨 How to Paint Your Masterpiece <span style="font-weight:400;color:#888;font-size:9px;">· Est. ${timeRange}</span></h3>
         
-        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+        <div style="font-size:9px;line-height:1.7;margin-bottom:5px;">
           <strong>🧰 Setup:</strong> Work on a flat surface with good lighting. Lay out all numbered pots and match them to the color guide. Keep a cup of water, paper towel, and your reference image nearby. Wear old clothes — acrylic is permanent once dry.
         </div>
 
-        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+        <div style="font-size:9px;line-height:1.7;margin-bottom:5px;">
           <strong>🖌️ Technique:</strong> Paint one color at a time across the whole canvas — finish every section numbered "1" before moving to "2", and so on. This avoids constant brush cleaning. Work light to dark — darker colors cover light ones easily if you overlap a border, but light paint struggles to cover dark mistakes. Start with the largest numbered areas using the flat brush, then switch to the fine brush for small sections. Work top to bottom so you don't rest your hand on wet paint. For each section: paint along the border edges first, then fill in the middle. Apply thin even coats — if the canvas texture shows through, let it dry 5–10 minutes and add a second coat. Make sure paint fully covers the printed numbers and lines.
         </div>
 
-        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+        <div style="font-size:9px;line-height:1.7;margin-bottom:5px;">
           <strong>🎯 Tips & Tricks:</strong> Stay inside the lines — paint right up to the border but don't cross into neighboring numbered sections. If you accidentally paint over a line, let it dry and paint the correct color back over it. Use a steady hand for small sections — rest your wrist on the table or your other hand. If a number is hard to read, check the color guide before painting. Dip only the tip of the brush into paint — you need less than you think. If the canvas shows through after one coat, let it dry and add a second thin coat. Close each pot immediately after dipping — don't leave them open while you paint.
         </div>
 
-        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+        <div style="font-size:9px;line-height:1.7;margin-bottom:5px;">
           <strong>✏️ Optional Outlining:</strong> Once all sections are fully dry (wait at least 1 hour), you can trace along the borders between sections with a 0.3–0.5mm permanent marker or felt-tip pen. Use black for a bold graphic look or dark brown for a softer natural feel. This hides any small gaps between colors and gives the painting a polished, defined appearance — especially effective on portraits and pets. Only outline the major borders. Test your pen on a painted edge first to check it doesn't smudge on the acrylic surface.
         </div>
 
-        <div style="font-size:7px;line-height:1.6;margin-bottom:4px;">
+        <div style="font-size:9px;line-height:1.7;margin-bottom:5px;">
           <strong>🧹 Paint Care:</strong> Seal pots tightly after every use — acrylic dries permanently in minutes. If paint thickens, add 1–2 drops of water max. Clean brushes immediately with water (dried acrylic ruins bristles). Reshape brush tips after washing and lay flat to dry. Never leave brushes standing in water.
         </div>
 
-        <div style="font-size:7px;line-height:1.6;">
+        <div style="font-size:9px;line-height:1.7;">
           <strong>✅ Finally:</strong> Let the completed painting dry 24 hours before handling or framing. But most importantly — relax and have fun! This is YOUR masterpiece. Mistakes happen and that's totally fine — they add character. Don't overthink it, just enjoy the process. Put on some music, grab a drink, and take your time. There's no wrong way to do this. When you're done, step back and admire what you created. You did that! 🎉
         </div>
       </div>

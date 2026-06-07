@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pixel Haven - Paint by Number Kit</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
   <!-- Lock Screen -->
@@ -46,6 +48,17 @@
 
     <!-- Main Canvas Viewport -->
     <main class="canvas-viewport" id="canvasViewport">
+      <!-- Crop overlay -->
+      <div class="crop-container" id="cropContainer" hidden>
+        <canvas id="cropCanvas"></canvas>
+        <div class="crop-box" id="cropBox">
+          <div class="crop-handle crop-handle-nw" data-dir="nw"></div>
+          <div class="crop-handle crop-handle-ne" data-dir="ne"></div>
+          <div class="crop-handle crop-handle-sw" data-dir="sw"></div>
+          <div class="crop-handle crop-handle-se" data-dir="se"></div>
+        </div>
+      </div>
+
       <!-- Upload state -->
       <div class="upload-state" id="uploadState">
         <div class="dropzone" id="dropZone">
@@ -111,6 +124,30 @@
         <button class="tab" data-view="palette">Colors</button>
       </div>
 
+      <!-- Crop -->
+      <div class="panel-section" id="cropSection" hidden>
+        <div class="panel-section-header">
+          <span class="panel-section-title">Crop & Size</span>
+        </div>
+        <div class="control-row">
+          <span class="control-label">Canvas ratio</span>
+        </div>
+        <select id="cropRatioSelect" class="select-input">
+          <option value="free">Freeform</option>
+          <option value="0.8">8 × 10"</option>
+          <option value="0.786">11 × 14"</option>
+          <option value="0.75">12 × 16"</option>
+          <option value="0.8">16 × 20"</option>
+          <option value="1">Square (1:1)</option>
+          <option value="0.667">2:3 Portrait</option>
+          <option value="0.5625">9:16 Tall</option>
+        </select>
+        <div style="margin-top:8px;display:flex;gap:4px;">
+          <button class="btn btn-secondary btn-sm btn-full" id="cropResetBtn">Reset</button>
+          <button class="btn btn-primary btn-sm btn-full" id="cropApplyBtn">Apply Crop</button>
+        </div>
+      </div>
+
       <!-- Settings -->
       <div class="panel-section">
         <div class="panel-section-header">
@@ -165,6 +202,15 @@
           <option value="lab" selected>CIE Lab (perceptual)</option>
           <option value="rgb">RGB (fast)</option>
         </select>
+
+        <div class="control-row" style="margin-top:10px;">
+          <span class="control-label">Merge Sensitivity</span>
+          <span class="control-value" id="mergeValue">15</span>
+        </div>
+        <input type="range" id="mergeSlider" min="5" max="30" step="1" value="15">
+        <div class="setting-range-labels" style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);">
+          <span>Keep similar</span><span>Merge aggressively</span>
+        </div>
       </div>
 
       <!-- Generate Button -->
@@ -212,7 +258,11 @@
           <div style="border-top:1px solid var(--border); margin:6px 0;"></div>
           <button class="btn btn-primary btn-full" id="dlPdfBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14,2 14,8 20,8"/></svg>
-            Download PDF (5 pages)
+            Download PDF (4 pages)
+          </button>
+          <button class="btn btn-secondary btn-full" id="dlPdfDirectBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Direct PDF Download
           </button>
         </div>
       </div>
