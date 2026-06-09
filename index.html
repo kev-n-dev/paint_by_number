@@ -171,6 +171,12 @@
             <span>+10hrs</span>
           </button>
         </div>
+        <div class="color-presets" style="margin-bottom:8px;">
+          <button class="color-preset preset-portrait" data-preset="portrait" style="grid-column:1/-1;flex-direction:row;gap:8px;padding:6px 12px;">
+            <strong>🎨 Portrait Mode</strong>
+            <span style="text-transform:none;letter-spacing:0;">40 colors · High detail · 2500px</span>
+          </button>
+        </div>
         <input type="range" id="colorSlider" min="6" max="60" step="1" value="24">
         <div class="control-row">
           <span class="control-label" style="font-size:10px;color:var(--text-muted)">or drag for custom</span>
@@ -187,13 +193,13 @@
           <span class="control-label">Min Region</span>
           <span class="control-value" id="minRegionValue">60</span>
         </div>
-        <input type="range" id="minRegionSlider" min="20" max="300" step="10" value="60">
+        <input type="range" id="minRegionSlider" min="10" max="300" step="5" value="60">
 
         <div class="control-row">
           <span class="control-label">Width</span>
           <span class="control-value" id="widthValue">1000</span>
         </div>
-        <input type="range" id="widthSlider" min="600" max="2000" step="50" value="1000">
+        <input type="range" id="widthSlider" min="600" max="4000" step="50" value="1000">
 
         <div class="control-row" style="margin-top:8px">
           <span class="control-label">Color Space</span>
@@ -210,6 +216,18 @@
         <input type="range" id="mergeSlider" min="5" max="30" step="1" value="15">
         <div class="setting-range-labels" style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);">
           <span>Keep similar</span><span>Merge aggressively</span>
+        </div>
+
+        <div class="control-row" style="margin-top:10px;">
+          <span class="control-label">Dithering</span>
+        </div>
+        <select id="ditherSelect" class="select-input">
+          <option value="none" selected>None (sharp edges)</option>
+          <option value="ordered">Ordered (smooth gradients)</option>
+          <option value="floyd">Floyd-Steinberg (natural)</option>
+        </select>
+        <div class="setting-range-labels" style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:2px;">
+          <span>Best for cartoons</span><span>Best for portraits</span>
         </div>
       </div>
 

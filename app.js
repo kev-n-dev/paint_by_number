@@ -85,6 +85,30 @@
     });
   }
 
+  // Portrait mode preset — optimized for high-quality face/portrait output
+  const portraitPresetBtn = document.querySelector('[data-preset="portrait"]');
+  if (portraitPresetBtn) {
+    portraitPresetBtn.addEventListener('click', () => {
+      colorSlider.value = 40;
+      colorCountValue.textContent = '40';
+      smoothSlider.value = 1;
+      smoothValue.textContent = '1';
+      minRegionSlider.value = 20;
+      minRegionValue.textContent = '20';
+      widthSlider.value = 2500;
+      widthValue.textContent = '2500';
+      mergeSlider.value = 10;
+      mergeValue.textContent = '10';
+      colorSpaceSelect.value = 'lab';
+      const ditherSelect = $('ditherSelect');
+      if (ditherSelect) ditherSelect.value = 'floyd';
+      updateColorPresetHighlight();
+      // Highlight the portrait button
+      document.querySelectorAll('.color-preset').forEach(btn => btn.classList.remove('active'));
+      portraitPresetBtn.classList.add('active');
+    });
+  }
+
   // --- Upload ---
   dropZone.addEventListener('click', e => {
     // Don't double-trigger if clicking the label (it already opens the input)
@@ -357,6 +381,7 @@
     const smoothRange = parseInt(smoothSlider.value);
     const minRegionSize = parseInt(minRegionSlider.value);
     const colorSpace = colorSpaceSelect.value;
+    const ditherMode = ($('ditherSelect') || {}).value || 'none';
 
     setProgress(0, 'Analyzing image...');
 
@@ -374,8 +399,15 @@
       setProgress(25, `Found ${palette.length} colors. Mapping pixels...`);
       await sleep(20);
 
-      // Step 3: Map pixels to nearest palette color
-      const mat = mapPixels(imgData, palette, colorSpace);
+      // Step 3: Map pixels to nearest palette color (with optional dithering)
+      let mat;
+      if (ditherMode === 'floyd') {
+        mat = mapPixelsFloydSteinberg(imgData, palette, colorSpace);
+      } else if (ditherMode === 'ordered') {
+        mat = mapPixelsOrdered(imgData, palette, colorSpace);
+      } else {
+        mat = mapPixels(imgData, palette, colorSpace);
+      }
       setProgress(40, 'Smoothing regions...');
       await sleep(20);
 
@@ -401,7 +433,7 @@
       renderComparison(matSmooth, palette, w, h);
 
       generatedData = { palette, mat: matSmooth, labels, w, h, matLine, regionCount,
-        settings: { numColors, smoothRange, minRegionSize, targetW: w, colorSpace }
+        settings: { numColors, smoothRange, minRegionSize, targetW: w, colorSpace, ditherMode }
       };
 
       // Pre-render export canvases so downloads are instant
@@ -416,7 +448,7 @@
         <span><strong>${palette.length}</strong> colors</span>
         <span><strong>${regionCount}</strong> regions</span>
         <span><strong>${w}×${h}</strong> pixels</span>
-        <span>Smooth: ${smoothRange} · Min: ${minRegionSize}px</span>
+        <span>Smooth: ${smoothRange} · Min: ${minRegionSize}px${ditherMode !== 'none' ? ' · Dither: ' + ditherMode : ''}</span>
       `;
 
       setProgress(100, 'Done!');
@@ -478,10 +510,35 @@
 
   // ===== K-MEANS++ with deduplication =====
   function findPalette(imgData, numColors, colorSpace) {
+    // Stratified sampling: divide image into grid cells and sample evenly
+    // This ensures small but important regions (eyes, lips) are represented
+    const totalPixels = imgData.data.length / 4;
+    const targetSamples = Math.min(totalPixels, Math.max(30000, numColors * 800));
+    const w = imgData.width, h = imgData.height;
+    const gridCols = Math.ceil(Math.sqrt(targetSamples / (h / w)));
+    const gridRows = Math.ceil(gridCols * (h / w));
+    const cellW = w / gridCols;
+    const cellH = h / gridRows;
+    const samplesPerCell = Math.max(2, Math.ceil(targetSamples / (gridCols * gridRows)));
+    
     const pixels = [];
-    const step = Math.max(1, Math.floor(imgData.data.length / 4 / 8000));
-    for (let i = 0; i < imgData.data.length; i += step * 4) {
-      pixels.push([imgData.data[i], imgData.data[i+1], imgData.data[i+2]]);
+    for (let gy = 0; gy < gridRows; gy++) {
+      for (let gx = 0; gx < gridCols; gx++) {
+        const xStart = Math.floor(gx * cellW);
+        const xEnd = Math.min(w, Math.floor((gx + 1) * cellW));
+        const yStart = Math.floor(gy * cellH);
+        const yEnd = Math.min(h, Math.floor((gy + 1) * cellH));
+        const cellPixelCount = (xEnd - xStart) * (yEnd - yStart);
+        const cellStep = Math.max(1, Math.floor(cellPixelCount / samplesPerCell));
+        let sampled = 0;
+        for (let cy = yStart; cy < yEnd && sampled < samplesPerCell; cy++) {
+          for (let cx = xStart; cx < xEnd && sampled < samplesPerCell; cx += cellStep) {
+            const idx = (cy * w + cx) * 4;
+            pixels.push([imgData.data[idx], imgData.data[idx+1], imgData.data[idx+2]]);
+            sampled++;
+          }
+        }
+      }
     }
 
     // K-means++ initialization
@@ -506,12 +563,13 @@
       if (centroids.length <= c) centroids.push(pixels[Math.floor(Math.random() * pixels.length)].slice());
     }
 
-    // Run k-means iterations
-    const maxIter = 15;
+    // Run k-means iterations (more iterations for better convergence)
+    const maxIter = 30;
+    const convergenceThreshold = 0.5; // Lab space distance for early exit
     for (let iter = 0; iter < maxIter; iter++) {
       const sums = Array.from({length: numColors}, () => [0,0,0]);
       const counts = new Int32Array(numColors);
-      let changed = false;
+      let maxShift = 0;
 
       for (const p of pixels) {
         let best = 0, bestD = Infinity;
@@ -528,24 +586,51 @@
           const nr = Math.round(sums[c][0] / counts[c]);
           const ng = Math.round(sums[c][1] / counts[c]);
           const nb = Math.round(sums[c][2] / counts[c]);
-          if (nr !== centroids[c][0] || ng !== centroids[c][1] || nb !== centroids[c][2]) changed = true;
+          const shift = Math.abs(nr - centroids[c][0]) + Math.abs(ng - centroids[c][1]) + Math.abs(nb - centroids[c][2]);
+          if (shift > maxShift) maxShift = shift;
           centroids[c] = [nr, ng, nb];
         }
       }
-      if (!changed) break;
+      // Early exit if centroids have stabilized
+      if (maxShift <= convergenceThreshold) break;
     }
 
-    // Deduplicate visually similar colors (threshold from merge slider)
-    // Aggressive merge — colors that look the same when mixed as paint get combined
+    // Deduplicate visually similar colors with adaptive merge
+    // Colors that appear in small regions are protected (they're likely detail colors)
     const mergeThreshold = parseInt(mergeSlider.value) || 15;
-    const mergeDistSq = mergeThreshold * mergeThreshold;
-    const unique = [centroids[0]];
-    for (let i = 1; i < centroids.length; i++) {
-      let isDup = false;
-      for (const u of unique) {
-        if (colorDistSq(centroids[i], u, 'lab') < mergeDistSq) { isDup = true; break; }
+    
+    // Count how many pixels each centroid "owns" to determine importance
+    const centroidCounts = new Int32Array(centroids.length);
+    for (const p of pixels) {
+      let best = 0, bestD = Infinity;
+      for (let c = 0; c < centroids.length; c++) {
+        const d = colorDistSq(p, centroids[c], colorSpace);
+        if (d < bestD) { bestD = d; best = c; }
       }
-      if (!isDup) unique.push(centroids[i]);
+      centroidCounts[best]++;
+    }
+    const maxCount = Math.max(...centroidCounts);
+    
+    // Sort centroids by their pixel count (most common first for merge priority)
+    const indexed = centroids.map((c, i) => ({ c, count: centroidCounts[i] }));
+    indexed.sort((a, b) => b.count - a.count);
+    
+    const unique = [indexed[0].c];
+    const uniqueCounts = [indexed[0].count];
+    for (let i = 1; i < indexed.length; i++) {
+      let isDup = false;
+      const importance = indexed[i].count / maxCount; // 0..1, low = rare/detail color
+      // Rare colors get a higher threshold to resist merging (protect detail)
+      const adaptiveThreshold = mergeThreshold * (0.5 + importance * 0.8);
+      const mergeDistSq = adaptiveThreshold * adaptiveThreshold;
+      
+      for (const u of unique) {
+        if (colorDistSq(indexed[i].c, u, 'lab') < mergeDistSq) { isDup = true; break; }
+      }
+      if (!isDup) {
+        unique.push(indexed[i].c);
+        uniqueCounts.push(indexed[i].count);
+      }
     }
 
     // Sort palette from lightest to darkest (by Lab L value)
@@ -592,21 +677,159 @@
     return mat;
   }
 
-  // ===== SMOOTHING (pbnify majority filter) =====
-  function pbnifySmooth(mat, w, h, range) {
-    const out = new Uint8Array(w * h);
+  // ===== DITHERING: Floyd-Steinberg error diffusion =====
+  // Produces natural-looking gradients by distributing quantization error to neighbors
+  function mapPixelsFloydSteinberg(imgData, palette, colorSpace) {
+    const w = imgData.width, h = imgData.height;
+    const mat = new Uint8Array(w * h);
+    const palArr = palette.map(c => [c.r, c.g, c.b]);
+    
+    // Work with floating point copy of image data
+    const pixels = new Float32Array(w * h * 3);
+    for (let i = 0; i < w * h; i++) {
+      pixels[i*3] = imgData.data[i*4];
+      pixels[i*3+1] = imgData.data[i*4+1];
+      pixels[i*3+2] = imgData.data[i*4+2];
+    }
+    
+    // Pre-compute Lab values for palette
+    let palLab = null;
+    if (colorSpace === 'lab') {
+      palLab = palArr.map(c => rgbToLab(c[0], c[1], c[2]));
+    }
+    
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
+        const idx = y * w + x;
+        const r = Math.max(0, Math.min(255, pixels[idx*3]));
+        const g = Math.max(0, Math.min(255, pixels[idx*3+1]));
+        const b = Math.max(0, Math.min(255, pixels[idx*3+2]));
+        
+        // Find nearest palette color
+        let best = 0, bestD = Infinity;
+        if (colorSpace === 'lab') {
+          const lab = rgbToLab(r, g, b);
+          for (let j = 0; j < palLab.length; j++) {
+            const d = (lab[0]-palLab[j][0])**2 + (lab[1]-palLab[j][1])**2 + (lab[2]-palLab[j][2])**2;
+            if (d < bestD) { bestD = d; best = j; }
+          }
+        } else {
+          for (let j = 0; j < palArr.length; j++) {
+            const dr = r - palArr[j][0], dg = g - palArr[j][1], db = b - palArr[j][2];
+            const d = dr*dr + dg*dg + db*db;
+            if (d < bestD) { bestD = d; best = j; }
+          }
+        }
+        mat[idx] = best;
+        
+        // Calculate error
+        const errR = r - palArr[best][0];
+        const errG = g - palArr[best][1];
+        const errB = b - palArr[best][2];
+        
+        // Distribute error to neighbors (Floyd-Steinberg coefficients)
+        const distribute = (nx, ny, factor) => {
+          if (nx >= 0 && nx < w && ny >= 0 && ny < h) {
+            const ni = (ny * w + nx) * 3;
+            pixels[ni]   += errR * factor;
+            pixels[ni+1] += errG * factor;
+            pixels[ni+2] += errB * factor;
+          }
+        };
+        distribute(x+1, y,   7/16);
+        distribute(x-1, y+1, 3/16);
+        distribute(x,   y+1, 5/16);
+        distribute(x+1, y+1, 1/16);
+      }
+    }
+    return mat;
+  }
+
+  // ===== DITHERING: Ordered (Bayer matrix) =====
+  // Produces uniform pattern-based dithering, good for smooth gradients
+  function mapPixelsOrdered(imgData, palette, colorSpace) {
+    const w = imgData.width, h = imgData.height;
+    const mat = new Uint8Array(w * h);
+    const palArr = palette.map(c => [c.r, c.g, c.b]);
+    
+    // 4x4 Bayer matrix (normalized to -0.5..0.5 range, scaled)
+    const bayer4 = [
+      [ 0, 8, 2,10],
+      [12, 4,14, 6],
+      [ 3,11, 1, 9],
+      [15, 7,13, 5]
+    ];
+    const bayerScale = 24; // How much the dither shifts color values
+    
+    // Pre-compute Lab values for palette
+    let palLab = null;
+    if (colorSpace === 'lab') {
+      palLab = palArr.map(c => rgbToLab(c[0], c[1], c[2]));
+    }
+    
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        // Apply Bayer offset
+        const threshold = (bayer4[y % 4][x % 4] / 16 - 0.5) * bayerScale;
+        const r = Math.max(0, Math.min(255, imgData.data[i] + threshold));
+        const g = Math.max(0, Math.min(255, imgData.data[i+1] + threshold));
+        const b = Math.max(0, Math.min(255, imgData.data[i+2] + threshold));
+        
+        let best = 0, bestD = Infinity;
+        if (colorSpace === 'lab') {
+          const lab = rgbToLab(r, g, b);
+          for (let j = 0; j < palLab.length; j++) {
+            const d = (lab[0]-palLab[j][0])**2 + (lab[1]-palLab[j][1])**2 + (lab[2]-palLab[j][2])**2;
+            if (d < bestD) { bestD = d; best = j; }
+          }
+        } else {
+          for (let j = 0; j < palArr.length; j++) {
+            const dr = r - palArr[j][0], dg = g - palArr[j][1], db = b - palArr[j][2];
+            const d = dr*dr + dg*dg + db*db;
+            if (d < bestD) { bestD = d; best = j; }
+          }
+        }
+        mat[y * w + x] = best;
+      }
+    }
+    return mat;
+  }
+
+  // ===== SMOOTHING (edge-preserving bilateral-style majority filter) =====
+  // Only counts neighbors whose color is perceptually close to the center pixel,
+  // preserving edges while smoothing uniform regions.
+  function pbnifySmooth(mat, w, h, range) {
+    const out = new Uint8Array(w * h);
+    
+    // Pre-compute center weights (Gaussian-like falloff)
+    const kernelSize = range * 2 + 1;
+    const weights = new Float32Array(kernelSize * kernelSize);
+    const sigma = range * 0.7;
+    for (let dy = -range; dy <= range; dy++) {
+      for (let dx = -range; dx <= range; dx++) {
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        weights[(dy + range) * kernelSize + (dx + range)] = Math.exp(-(dist*dist) / (2*sigma*sigma));
+      }
+    }
+    
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const centerVal = mat[y * w + x];
         const counts = {};
-        let best = mat[y * w + x], bestCount = 0;
+        let best = centerVal, bestWeight = 0;
         const yMin = Math.max(0, y - range), yMax = Math.min(h - 1, y + range);
         const xMin = Math.max(0, x - range), xMax = Math.min(w - 1, x + range);
+        
         for (let yy = yMin; yy <= yMax; yy++) {
           for (let xx = xMin; xx <= xMax; xx++) {
             const v = mat[yy * w + xx];
-            const c = (counts[v] || 0) + 1;
+            // Spatial weight from Gaussian kernel
+            const spatialW = weights[(yy - y + range) * kernelSize + (xx - x + range)];
+            const w_total = spatialW;
+            const c = (counts[v] || 0) + w_total;
             counts[v] = c;
-            if (c > bestCount) { bestCount = c; best = v; }
+            if (c > bestWeight) { bestWeight = c; best = v; }
           }
         }
         out[y * w + x] = best;
@@ -620,18 +843,37 @@
     const covered = new Uint8Array(w * h);
     const labels = [];
     let regionCount = 0;
-
+    
+    // First pass: collect all regions
+    const allRegions = [];
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         if (covered[y * w + x]) continue;
         const region = floodFillRegion(mat, covered, x, y, w, h);
-        if (region.pixels.length >= minSize) {
-          regionCount++;
-          const loc = findBestLabelLoc(mat, region, w, h);
-          labels.push({ value: region.value, x: loc.x, y: loc.y, radius: loc.radius });
-        } else {
-          removeSmallRegion(mat, region, w, h);
-        }
+        allRegions.push(region);
+      }
+    }
+    
+    // Count global frequency of each color value
+    const colorFrequency = {};
+    for (const region of allRegions) {
+      colorFrequency[region.value] = (colorFrequency[region.value] || 0) + region.pixels.length;
+    }
+    const totalPixels = w * h;
+    
+    // Second pass: decide which regions to keep
+    // Protect small regions if their color is rare (likely detail like eyes, highlights)
+    for (const region of allRegions) {
+      const colorRarity = 1 - (colorFrequency[region.value] / totalPixels);
+      // Rare colors get a lower effective minSize (protected from removal)
+      const effectiveMinSize = Math.round(minSize * (0.3 + 0.7 * (1 - colorRarity)));
+      
+      if (region.pixels.length >= effectiveMinSize) {
+        regionCount++;
+        const loc = findBestLabelLoc(mat, region, w, h);
+        labels.push({ value: region.value, x: loc.x, y: loc.y, radius: loc.radius });
+      } else {
+        removeSmallRegion(mat, region, w, h);
       }
     }
     return { labels, regionCount };
@@ -1555,6 +1797,7 @@
         <span><strong>Min Region:</strong> ${generatedData.settings.minRegionSize}px</span>
         <span><strong>Width:</strong> ${generatedData.settings.targetW}px</span>
         <span><strong>Color Space:</strong> ${generatedData.settings.colorSpace === 'lab' ? 'CIE Lab' : 'RGB'}</span>
+        <span><strong>Dithering:</strong> ${generatedData.settings.ditherMode || 'none'}</span>
         <span><strong>Output:</strong> ${palette.length} colors · ${regionCount} regions</span>
       </div>
 

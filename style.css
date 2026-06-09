@@ -693,6 +693,27 @@ input[type="range"]:focus::-webkit-slider-thumb {
   opacity: 0.7;
 }
 
+/* Portrait preset — full-width special button */
+.preset-portrait {
+  border-color: var(--accent-subtle);
+  background: linear-gradient(135deg, var(--bg-surface), var(--accent-subtle));
+}
+.preset-portrait:hover {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, var(--bg-hover), var(--accent-subtle));
+}
+.preset-portrait.active {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+.preset-portrait strong {
+  font-size: 12px;
+}
+.preset-portrait span {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
 /* ===== CROP TOOL ===== */
 .crop-container {
   position: absolute;
